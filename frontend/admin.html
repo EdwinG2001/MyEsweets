@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M&E SWEETS — Panel Administrador</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="css/styles.css?v=2.4">
+  <style>
+  body { background: var(--color-gray-50); }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Chart mini bar */
+  .mini-bar-chart { display: flex; align-items: flex-end; gap: 6px; height: 80px; }
+  .mini-bar {
+    flex: 1; background: linear-gradient(180deg, var(--color-terracotta), var(--color-dorado));
+    border-radius: 4px 4px 0 0; transition: height 0.5s ease; min-width: 8px;
+  }
+
+  /* Login admin overlay */
+  #login-overlay {
+    position: fixed; inset: 0;
+    background: linear-gradient(145deg, var(--color-chocolate), var(--color-choco-mid));
+    z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .admin-login-card {
+    background: var(--color-white);
+    border-radius: var(--radius-xl);
+    padding: var(--space-10) var(--space-8);
+    width: 100%; max-width: 420px;
+    box-shadow: var(--shadow-xl);
+    text-align: center;
+  }
+  .admin-login-logo {
+    font-family: var(--font-display);
+    font-size: var(--font-size-3xl);
+    color: var(--color-terracotta);
+    margin-bottom: var(--space-2);
+  }
+  .admin-login-sub {
+    font-size: var(--font-size-sm);
+    color: var(--color-gray-600);
+    margin-bottom: var(--space-8);
+  }
+
+  /* Filtros de pedidos */
+  .filter-bar {
+    display: flex; gap: var(--space-3); flex-wrap: wrap;
+    margin-bottom: var(--space-6); align-items: center;
+  }
+  .filter-bar .form-control { max-width: 180px; min-height: 40px; padding: var(--space-2) var(--space-3); }
+
+  /* Orden de producción */
+  .op-card {
+    background: var(--color-white);
+    border: 2px solid var(--color-dorado);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-4);
+  }
+  .op-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: var(--space-4);
+  }
+  .op-ingredientes { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }
+  .op-ingr-item {
+    background: var(--color-dorado-pale);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-sm);
+  }
+
+  /* Alertas stock en dashboard */
+  .alerta-stock-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-warning-bg);
+    border-left: 3px solid var(--color-warning);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    margin-bottom: var(--space-2);
+    font-size: var(--font-size-sm);
+  }
+  .alerta-sin-stock { background: var(--color-danger-bg); border-color: var(--color-danger); }
+
+  /* Config form grid */
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+  @media(max-width:600px){ .config-grid { grid-template-columns: 1fr; } }
+
+  /* Sidebar móvil toggle */
+  .sidebar-toggle {
+    display: none;
+    position: fixed; top: var(--space-4); left: var(--space-4);
+    z-index: 300; background: var(--color-chocolate);
+    color: white; width: 40px; height: 40px;
+    border-radius: var(--radius-sm); align-items: center; justify-content: center;
+    font-size: 18px; cursor: pointer;
+  }
+  @media(max-width:1024px){ .sidebar-toggle { display: flex; } }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════ LOGIN OVERLAY ══════════════ -->
+<div id="login-overlay">
+  <div class="admin-login-card">
+    <div class="admin-login-logo">M&amp;E SWEETS</div>
+    <p class="admin-login-sub">Panel de Administración</p>
+    <div class="form-group" style="text-align:left">
+      <label class="form-label" for="admin-email">Email</label>
+      <input type="email" id="admin-email" class="form-control" placeholder="admin@mesweets.com"
+             value="admin@mesweets.com">
+    </div>
+    <div class="form-group" style="text-align:left">
+      <label class="form-label" for="admin-pass">Contraseña</label>
+      <input type="password" id="admin-pass" class="form-control" placeholder="••••••••"
+             onkeydown="if(event.key==='Enter')doAdminLogin()">
+    </div>
+    <div id="login-admin-error" class="alert alert-danger" style="display:none;margin-bottom:var(--space-4)"></div>
+    <button class="btn btn-primary btn-full btn-lg" onclick="doAdminLogin()">
+      🔐 Ingresar al Panel
+    </button>
+    <p style="margin-top:var(--space-4);font-size:var(--font-size-sm)">
+      <a href="index.html" style="color:var(--color-terracotta)">← Volver al inicio</a>
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════ SIDEBAR ════════════════════ -->
+<button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display:none">☰</button>
+
+<div class="admin-layout" id="admin-layout" style="display:none">
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand" style="display:flex;align-items:center;gap:12px;">
+      <img src="logo.jpeg" alt="Logo M&E SWEETS" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1.5px solid var(--color-dorado);box-shadow:0 2px 8px rgba(0,0,0,0.4);flex-shrink:0;">
+      <div>
+        <h2 style="margin:0;font-size:1.15rem;letter-spacing:0.04em;">M&amp;E SWEETS</h2>
+        <small style="color:var(--color-dorado-light);opacity:0.85;font-size:0.75rem;">Panel Administrador</small>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Principal</div>
+      <div class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard')">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" id="nav-pedidos" onclick="showPage('pedidos')">
+        <span class="nav-icon">📦</span> Pedidos
+        <span class="nav-badge" id="badge-pedidos">0</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Inventario</div>
+      <div class="nav-item" id="nav-ingredientes" onclick="showPage('ingredientes')">
+        <span class="nav-icon">🌾</span> Ingredientes
+      </div>
+      <div class="nav-item" id="nav-licores" onclick="showPage('licores')">
+        <span class="nav-icon">🥃</span> Licores
+      </div>
+      <div class="nav-item" id="nav-productos" onclick="showPage('productos')">
+        <span class="nav-icon">🍰</span> Bases & Coberturas
+      </div>
+      <div class="nav-item" id="nav-movimientos" onclick="showPage('movimientos')">
+        <span class="nav-icon">📋</span> Movimientos
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Gestión</div>
+      <div class="nav-item" id="nav-clientes" onclick="showPage('clientes')">
+        <span class="nav-icon">👥</span> Clientes
+      </div>
+      <div class="nav-item" id="nav-reportes" onclick="showPage('reportes')">
+        <span class="nav-icon">📈</span> Reportes
+      </div>
+      <div class="nav-item" id="nav-configuracion" onclick="showPage('configuracion')">
+        <span class="nav-icon">⚙️</span> Configuración
+      </div>
+    </div>
+
+    <div style="padding:var(--space-3) var(--space-4) var(--space-6);border-top:1px solid rgba(255,255,255,.10);margin-top:var(--space-3);flex-shrink:0">
+      <div class="nav-item" onclick="adminLogout()" style="color:rgba(255,255,255,.85)">
+        <span class="nav-icon">🚪</span> Cerrar Sesión
+      </div>
+      <p style="font-size:10px;color:rgba(255,255,255,.30);padding:2px var(--space-2);margin:0">
+        M&amp;E SWEETS Admin v1.0
+      </p>
+    </div>
+  </nav>
+
+  <div class="admin-content">
+    <!-- TOPBAR -->
+    <div class="admin-topbar">
+      <div style="display:flex;align-items:center;gap:var(--space-4)">
+        <button class="sidebar-toggle" style="display:none;position:static" id="topbar-toggle" onclick="toggleSidebar()">☰</button>
+        <h1 id="page-title">Dashboard</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--space-4)">
+        <span id="admin-name-display" style="font-size:var(--font-size-sm);color:var(--color-gray-600)"></span>
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--color-terracotta);
+                    display:flex;align-items:center;justify-content:center;color:white;font-weight:700">A</div>
+        <button class="btn btn-outline btn-sm" onclick="adminLogout()" style="display:flex;align-items:center;gap:6px;padding:6px 14px;border-color:var(--color-terracotta);color:var(--color-terracotta);font-weight:600;cursor:pointer">
+          🚪 Cerrar Sesión
+        </button>
+      </div>
+    </div>
+
+    <div class="admin-main">
+      <!-- ═══ PAGE: DASHBOARD ═══ -->
+      <div class="page active" id="page-dashboard">
+        <!-- Stats cards -->
+        <div class="grid-4" style="margin-bottom:var(--space-6)">
+          <div class="stat-card terra">
+            <div class="stat-icon">📦</div>
+            <div class="stat-value" id="stat-pedidos-hoy">0</div>
+            <div class="stat-label">Pedidos hoy</div>
+          </div>
+          <div class="stat-card dorado">
+            <div class="stat-icon">💰</div>
+            <div class="stat-value" id="stat-ingresos-hoy">$0</div>
+            <div class="stat-label">Ingresos hoy</div>
+          </div>
+          <div class="stat-card choco">
+            <div class="stat-icon">👥</div>
+            <div class="stat-value" id="stat-clientes">0</div>
+            <div class="stat-label">Clientes registrados</div>
+          </div>
+          <div class="stat-card success">
+            <div class="stat-icon">🌾</div>
+            <div class="stat-value" id="stat-alertas">0</div>
+            <div class="stat-label">Alertas de stock</div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-bottom:var(--space-6)">
+          <!-- Pedidos recientes -->
+          <div class="card">
+            <div class="flex-between" style="margin-bottom:var(--space-4)">
+              <h3 style="font-size:var(--font-size-base);font-weight:600">Pedidos Recientes</h3>
+              <button class="btn btn-ghost btn-sm" onclick="showPage('pedidos')">Ver todos →</button>
+            </div>
+            <div id="pedidos-recientes-list">
+              <div class="flex-center"><div class="spinner"></div></div>
+            </div>
+          </div>
+
+          <!-- Alertas de stock -->
+          <div class="card">
+            <div class="flex-between" style="margin-bottom:var(--space-4)">
+              <h3 style="font-size:var(--font-size-base);font-weight:600">⚠️ Alertas de Stock</h3>
+              <button class="btn btn-ghost btn-sm" onclick="showPage('ingredientes')">Gestionar →</button>
+            </div>
+            <div id="alertas-stock-list">
+              <div class="flex-center"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ingresos 7 días -->
+        <div class="card">
+          <h3 style="font-size:var(--font-size-base);font-weight:600;margin-bottom:var(--space-4)">
+            📈 Ingresos (últimos 7 días)
+          </h3>
+          <div id="chart-ingresos" class="mini-bar-chart">
+            <div class="flex-center" style="width:100%"><div class="spinner"></div></div>
+          </div>
+          <div id="chart-labels" style="display:flex;gap:6px;margin-top:8px"></div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: PEDIDOS ═══ -->
+      <div class="page" id="page-pedidos">
+        <div class="filter-bar">
+          <select class="form-control" id="filtro-estado" onchange="loadPedidosAdmin()">
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="en_preparacion">En Preparación</option>
+            <option value="en_camino">En Camino</option>
+            <option value="entregado">Entregado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+          <input type="date" class="form-control" id="filtro-fecha" onchange="loadPedidosAdmin()" style="max-width:160px">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('filtro-estado').value='';document.getElementById('filtro-fecha').value='';loadPedidosAdmin()">
+            Limpiar
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:45px">#</th>
+                <th style="min-width:180px">Cliente &amp; Contacto</th>
+                <th style="min-width:140px">Formato / Empaque</th>
+                <th style="min-width:130px">Base</th>
+                <th style="min-width:125px">Cobertura</th>
+                <th style="min-width:135px">Licor</th>
+                <th style="min-width:115px">Fruta</th>
+                <th style="min-width:160px">Entrega &amp; Notas</th>
+                <th style="text-align:center;width:60px">Porc.</th>
+                <th style="min-width:75px">Total</th>
+                <th style="text-align:center;min-width:110px">Estado</th>
+                <th style="min-width:120px">Fecha</th>
+                <th class="col-acciones" style="min-width:140px;text-align:center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-pedidos"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: INGREDIENTES ═══ -->
+      <div class="page" id="page-ingredientes">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);margin-bottom:var(--space-5);flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:var(--space-3);flex:1;max-width:440px;position:relative">
+            <span style="position:absolute;left:14px;color:var(--color-gray-400);font-size:15px;pointer-events:none">🔍</span>
+            <input type="text" id="buscar-ingrediente" class="form-control"
+                   style="padding-left:38px;padding-right:32px;border-radius:var(--radius-full);background:var(--color-white);border:1px solid var(--color-gray-200);box-shadow:var(--shadow-sm);font-size:13px;width:100%"
+                   placeholder="Buscar por nombre, lote, proveedor o estado..."
+                   oninput="filtrarIngredientes(this.value)">
+            <button id="btn-limpiar-ingr" onclick="limpiarBusquedaIngredientes()"
+                    style="position:absolute;right:10px;background:none;border:none;color:var(--color-gray-400);cursor:pointer;display:none;font-size:14px" title="Limpiar">✕</button>
+          </div>
+          <div style="display:flex;gap:var(--space-3);align-items:center">
+            <span id="contador-ingredientes" style="font-size:var(--font-size-xs);color:var(--color-gray-600)"></span>
+            <button class="btn btn-primary btn-sm" onclick="openModalIngrediente()">+ Nuevo Ingrediente</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>Unidad</th><th>Stock</th><th>Mínimo</th>
+                <th>Estado</th><th>Precio/U</th><th>Caducidad</th><th>Lote</th><th>Proveedor</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-ingredientes"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: LICORES ═══ -->
+      <div class="page" id="page-licores">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);margin-bottom:var(--space-5);flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:var(--space-3);flex:1;max-width:440px;position:relative">
+            <span style="position:absolute;left:14px;color:var(--color-gray-400);font-size:15px;pointer-events:none">🔍</span>
+            <input type="text" id="buscar-licor" class="form-control"
+                   style="padding-left:38px;padding-right:32px;border-radius:var(--radius-full);background:var(--color-white);border:1px solid var(--color-gray-200);box-shadow:var(--shadow-sm);font-size:13px;width:100%"
+                   placeholder="Buscar licor por nombre o tipo..."
+                   oninput="filtrarLicores(this.value)">
+            <button id="btn-limpiar-licor" onclick="limpiarBusquedaLicores()"
+                    style="position:absolute;right:10px;background:none;border:none;color:var(--color-gray-400);cursor:pointer;display:none;font-size:14px" title="Limpiar">✕</button>
+          </div>
+          <div style="display:flex;gap:var(--space-3);align-items:center">
+            <span id="contador-licores" style="font-size:var(--font-size-xs);color:var(--color-gray-600)"></span>
+            <button class="btn btn-primary btn-sm" onclick="openModalLicor()">+ Nuevo Licor</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>Tipo</th><th>Grado Alc.</th><th>Stock (ml)</th>
+                <th>Mín (ml)</th><th>Porciones Disp.</th><th>Estado</th><th>Precio/750ml</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-licores"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: PRODUCTOS (Bases y Coberturas) ═══ -->
+      <div class="page" id="page-productos">
+        <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-6);flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="openModalBase()">+ Nueva Base</button>
+          <button class="btn btn-outline btn-sm" onclick="openModalCobertura()">+ Nueva Cobertura</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6)">
+          <div>
+            <h3 style="font-size:var(--font-size-base);font-weight:600;margin-bottom:var(--space-4)">🍰 Bases de Postre</h3>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Nombre</th><th>Stock Porciones</th><th>PVP</th><th>Activo</th><th>Acciones</th></tr></thead>
+                <tbody id="tabla-bases"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3 style="font-size:var(--font-size-base);font-weight:600;margin-bottom:var(--space-4)">🎂 Coberturas</h3>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead><tr><th>Nombre</th><th>Stock (g)</th><th>PVP</th><th>Activo</th><th>Acciones</th></tr></thead>
+                <tbody id="tabla-coberturas"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: MOVIMIENTOS ═══ -->
+      <div class="page" id="page-movimientos">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Fecha</th><th>Tipo Recurso</th><th>Recurso</th><th>Movimiento</th>
+                <th>Cantidad</th><th>Antes</th><th>Después</th><th>Pedido</th><th>Usuario</th><th>Motivo</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-movimientos"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: CLIENTES ═══ -->
+      <div class="page" id="page-clientes">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>Email</th><th>Teléfono</th><th>Nacimiento</th>
+                <th>Pedidos</th><th>Registro</th><th>Estado</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-clientes"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: REPORTES ═══ -->
+      <div class="page" id="page-reportes">
+        <div class="grid-3" style="margin-bottom:var(--space-6)">
+          <div class="card">
+            <h4 style="font-weight:600;margin-bottom:var(--space-4)">📊 Ventas por Cobertura</h4>
+            <div id="rep-coberturas">
+              <div class="flex-center"><div class="spinner"></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <h4 style="font-weight:600;margin-bottom:var(--space-4)">🥃 Ventas por Licor</h4>
+            <div id="rep-licores">
+              <div class="flex-center"><div class="spinner"></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <h4 style="font-weight:600;margin-bottom:var(--space-4)">⚠️ Insumos Críticos</h4>
+            <div id="rep-criticos">
+              <div class="flex-center"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="flex-between" style="margin-bottom:var(--space-4)">
+            <h4 style="font-weight:600">💰 Ingresos por Período</h4>
+            <select class="form-control" id="periodo-select" style="max-width:140px" onchange="loadReporteIngresos()">
+              <option value="dia">Por día</option>
+              <option value="semana">Por semana</option>
+              <option value="mes" selected>Por mes</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Período</th><th>Pedidos</th><th>Porciones</th><th>Ingresos</th></tr></thead>
+              <tbody id="tabla-ingresos"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ PAGE: CONFIGURACIÓN ═══ -->
+      <div class="page" id="page-configuracion">
+        <div class="card" style="max-width:700px">
+          <h3 style="font-weight:600;margin-bottom:var(--space-6)">⚙️ Parámetros del Sistema</h3>
+          <div id="config-form" class="config-grid"></div>
+          <div style="margin-top:var(--space-6)">
+            <button class="btn btn-primary" onclick="saveConfig()">Guardar Cambios</button>
+          </div>
+        </div>
+      </div>
+    </div><!-- /admin-main -->
+  </div><!-- /admin-content -->
+</div><!-- /admin-layout -->
+
+<!-- ═══════════════ MODALES ═══════════════════════ -->
+
+<!-- Modal Ingrediente -->
+<div class="modal-backdrop" id="modal-ingrediente">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-ingr-title">Nuevo Ingrediente</span>
+      <button class="modal-close" onclick="closeModal('modal-ingrediente')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ingr-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Nombre *</label>
+          <input type="text" id="ingr-nombre" class="form-control" placeholder="Harina de trigo">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Unidad de medida *</label>
+          <select id="ingr-unidad" class="form-control">
+            <option value="g">Gramos (g)</option>
+            <option value="kg">Kilogramos (kg)</option>
+            <option value="ml">Mililitros (ml)</option>
+            <option value="l">Litros (l)</option>
+            <option value="unidad">Unidad</option>
+            <option value="taza">Taza</option>
+            <option value="cucharada">Cucharada</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Precio por unidad ($) *</label>
+          <input type="number" id="ingr-precio" class="form-control" min="0" step="0.0001" placeholder="0.0015">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock actual *</label>
+          <input type="number" id="ingr-stock" class="form-control" min="0" step="0.001" placeholder="500">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock mínimo *</label>
+          <input type="number" id="ingr-stock-min" class="form-control" min="0" step="0.001" placeholder="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha ingreso</label>
+          <input type="date" id="ingr-f-ingreso" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha caducidad</label>
+          <input type="date" id="ingr-f-cad" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lote</label>
+          <input type="text" id="ingr-lote" class="form-control" placeholder="LOT-001">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Notas</label>
+          <textarea id="ingr-notas" class="form-control" rows="2" placeholder="Observaciones..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-ingrediente')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveIngrediente()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Licor -->
+<div class="modal-backdrop" id="modal-licor">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-licor-title">Nuevo Licor</span>
+      <button class="modal-close" onclick="closeModal('modal-licor')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="licor-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Nombre *</label>
+          <input type="text" id="licor-nombre" class="form-control" placeholder="Ron Barceló Imperial">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo *</label>
+          <input type="text" id="licor-tipo" class="form-control" placeholder="Ron, Amaretto, Whisky...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Grado alcohólico (%) *</label>
+          <input type="number" id="licor-grado" class="form-control" min="0" max="100" step="0.1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock actual (ml) *</label>
+          <input type="number" id="licor-stock" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock mínimo (ml) *</label>
+          <input type="number" id="licor-stock-min" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Precio botella 750ml ($) *</label>
+          <input type="number" id="licor-precio" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ml por porción *</label>
+          <input type="number" id="licor-ml-porcion" class="form-control" min="1" step="0.5" value="10">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-licor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveLicor()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Base -->
+<div class="modal-backdrop" id="modal-base">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-base-title">Nueva Base de Postre</span>
+      <button class="modal-close" onclick="closeModal('modal-base')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="base-id">
+      <div class="form-group">
+        <label class="form-label">Nombre *</label>
+        <input type="text" id="base-nombre" class="form-control" placeholder="Bizcocho de Vainilla">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descripción</label>
+        <textarea id="base-desc" class="form-control" rows="2"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-3)">
+        <div class="form-group">
+          <label class="form-label">Costo base ($)</label>
+          <input type="number" id="base-costo" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Precio venta sugerido ($)</label>
+          <input type="number" id="base-pvp" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock porciones</label>
+          <input type="number" id="base-stock" class="form-control" min="0">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-base')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveBase()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Cobertura -->
+<div class="modal-backdrop" id="modal-cobertura">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-cob-title">Nueva Cobertura</span>
+      <button class="modal-close" onclick="closeModal('modal-cobertura')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cob-id">
+      <div class="form-group">
+        <label class="form-label">Nombre *</label>
+        <input type="text" id="cob-nombre" class="form-control" placeholder="Manjar Dulce de Leche">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descripción</label>
+        <textarea id="cob-desc" class="form-control" rows="2"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:var(--space-3)">
+        <div class="form-group">
+          <label class="form-label">Costo base ($)</label>
+          <input type="number" id="cob-costo" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">PVP ($)</label>
+          <input type="number" id="cob-pvp" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock (g)</label>
+          <input type="number" id="cob-stock" class="form-control" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">g por porción</label>
+          <input type="number" id="cob-gxp" class="form-control" min="1" step="0.1" value="30">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-cobertura')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCobertura()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Estado Pedido -->
+<div class="modal-backdrop" id="modal-estado-pedido">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">Cambiar Estado del Pedido</span>
+      <button class="modal-close" onclick="closeModal('modal-estado-pedido')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ep-pedido-id">
+      <div class="form-group">
+        <label class="form-label">Nuevo Estado</label>
+        <select id="ep-nuevo-estado" class="form-control">
+          <option value="pendiente">Pendiente</option>
+          <option value="en_preparacion">En Preparación</option>
+          <option value="en_camino">En Camino</option>
+          <option value="entregado">Entregado</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas internas (opcional)</label>
+        <textarea id="ep-notas" class="form-control" rows="2" placeholder="Notas para el equipo..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-estado-pedido')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEstadoPedido()">Actualizar Estado</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Detalle Pedido / Orden Producción -->
+<div class="modal-backdrop" id="modal-detalle-pedido">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-dp-title">Detalle del Pedido</span>
+      <button class="modal-close" onclick="closeModal('modal-detalle-pedido')">✕</button>
+    </div>
+    <div class="modal-body" id="modal-dp-body">
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="js/admin.js?v=2.6"></script>
+</body>
+</html>
