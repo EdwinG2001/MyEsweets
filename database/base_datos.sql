@@ -771,6 +771,7 @@ CREATE PROCEDURE `sp_crear_pedido`(
     IN  p_base_id         INT UNSIGNED,
     IN  p_cobertura_id    INT UNSIGNED,
     IN  p_licor_id        INT UNSIGNED,
+    IN  p_fruta_id        INT UNSIGNED,
     IN  p_porciones       INT UNSIGNED,
     IN  p_sin_alcohol     TINYINT(1),
     IN  p_tipo_empaque    VARCHAR(20),
@@ -851,13 +852,14 @@ BEGIN
         SET v_precio_total = (COALESCE(v_p_base, 2.00) + COALESCE(v_p_cob, 0.00) + COALESCE(v_p_licor, 0.00)) * p_porciones;
 
         INSERT INTO pedidos (
-            cliente_id, tipo_postre_id, base_id, cobertura_id, licor_id,
+            cliente_id, tipo_postre_id, base_id, cobertura_id, licor_id, fruta_id,
             porciones, sin_alcohol, tipo_empaque, estado,
             precio_base_unit, precio_cobertura, precio_licor, precio_total,
             direccion_entrega, notas_cliente, stock_reservado, fecha_entrega_est
         ) VALUES (
             p_cliente_id, p_tipo_postre_id, p_base_id, p_cobertura_id,
             IF(p_sin_alcohol=1, NULL, p_licor_id),
+            p_fruta_id,
             p_porciones, p_sin_alcohol, p_tipo_empaque, 'pendiente',
             COALESCE(v_p_base,0), COALESCE(v_p_cob,0), COALESCE(v_p_licor,0), v_precio_total,
             p_direccion, p_notas, 1, DATE_ADD(NOW(), INTERVAL 2 DAY)
