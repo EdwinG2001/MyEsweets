@@ -100,9 +100,14 @@ MYSQL* db_connect() {
     // Charset UTF8
     mysql_options(conn, MYSQL_SET_CHARSET_NAME, "utf8mb4");
 
-    // Configuración SSL para Aiven Cloud MySQL
-    my_bool verify_server_cert = 0;
+    // Configuración SSL para Aiven Cloud MySQL (compatible con Ubuntu 22.04 MySQL 8+ y Windows)
+#ifdef _WIN32
+    char verify_server_cert = 0;
     mysql_options(conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &verify_server_cert);
+#else
+    unsigned int ssl_mode = 3; // SSL_MODE_REQUIRED en MySQL 8+
+    mysql_options(conn, MYSQL_OPT_SSL_MODE, &ssl_mode);
+#endif
     mysql_ssl_set(conn, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     std::string host = get_db_host();
