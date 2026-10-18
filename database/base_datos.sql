@@ -967,7 +967,7 @@ END$$
 DELIMITER ;
 
 -- =============================================================================
--- VISTA DE INGREDIENTES EN ALERTA
+-- VISTAS DEL SISTEMA (Sin DEFINER para compatibilidad en la nube)
 -- =============================================================================
 
 CREATE OR REPLACE VIEW `v_ingredientes_alerta` AS
@@ -985,5 +985,89 @@ SELECT
 FROM ingredientes i
 LEFT JOIN proveedores p ON p.id = i.proveedor_id
 WHERE i.activo = 1;
+
+CREATE OR REPLACE VIEW `v_pedidos_resumen` AS
+SELECT
+    p.id AS pedido_id,
+    p.fecha_pedido,
+    p.estado,
+    p.precio_total,
+    p.porciones,
+    p.tipo_empaque,
+    p.sin_alcohol,
+    p.direccion_entrega,
+    p.notas_cliente,
+    p.notas_admin,
+    p.stock_reservado,
+    p.fecha_entrega_est,
+    CONCAT(u.nombre, ' ', u.apellido) AS cliente,
+    u.email AS cliente_email,
+    u.telefono AS cliente_telefono,
+    tp.nombre AS tipo_postre,
+    bp.nombre AS base,
+    c.nombre AS cobertura,
+    l.nombre AS licor,
+    COALESCE(f.nombre, 'Sin fruta') AS fruta
+FROM pedidos p
+INNER JOIN usuarios u ON u.id = p.cliente_id
+LEFT JOIN tipos_postre tp ON tp.id = p.tipo_postre_id
+LEFT JOIN bases_postre bp ON bp.id = p.base_id
+LEFT JOIN coberturas c ON c.id = p.cobertura_id
+LEFT JOIN licores l ON l.id = p.licor_id
+LEFT JOIN frutas f ON f.id = p.fruta_id;
+
+CREATE OR REPLACE VIEW `v_licores_alerta` AS
+SELECT
+    l.id, l.nombre, l.tipo, l.grado_alcoholico,
+    l.stock_ml, l.stock_minimo_ml, l.ml_por_porcion,
+    FLOOR(l.stock_ml / NULLIF(l.ml_por_porcion, 0)) AS porciones_disponibles,
+    p.nombre AS proveedor,
+    CASE
+        WHEN l.stock_ml = 0                    THEN 'SIN_STOCK'
+        WHEN l.stock_ml <= l.stock_minimo_ml   THEN 'STOCK_BAJO'
+        ELSE 'NORMAL'
+    END AS estado_stock
+FROM licores l
+LEFT JOIN proveedores p ON p.id = l.proveedor_id
+WHERE l.activo = 1;
+
+CREATE OR REPLACE VIEW `v_ventas_por_cobertura` AS
+SELECT
+    c.nombre AS cobertura,
+    COUNT(p.id) AS total_pedidos,
+    SUM(p.porciones) AS total_porciones,
+    SUM(p.precio_total) AS ingreso_total,
+    AVG(p.precio_total) AS ticket_promedio
+FROM pedidos p
+INNER JOIN coberturas c ON c.id = p.cobertura_id
+WHERE p.estado NOT IN ('cancelado')
+GROUP BY c.id, c.nombre
+ORDER BY ingreso_total DESC;
+
+CREATE OR REPLACE VIEW `v_ventas_por_licor` AS
+SELECT
+    COALESCE(l.nombre, 'Sin Alcohol') AS licor,
+    COUNT(p.id) AS total_pedidos,
+    SUM(p.porciones) AS total_porciones,
+    SUM(p.precio_total) AS ingreso_total
+FROM pedidos p
+LEFT JOIN licores l ON l.id = p.licor_id
+WHERE p.estado NOT IN ('cancelado')
+GROUP BY l.id, l.nombre
+ORDER BY ingreso_total DESC;
+
+CREATE OR REPLACE VIEW `v_ingresos_periodo` AS
+SELECT
+    DATE(p.fecha_pedido) AS fecha,
+    YEARWEEK(p.fecha_pedido, 1) AS semana,
+    YEAR(p.fecha_pedido) AS anio,
+    MONTH(p.fecha_pedido) AS mes,
+    COUNT(p.id) AS num_pedidos,
+    SUM(p.porciones) AS total_porciones,
+    SUM(p.precio_total) AS ingresos
+FROM pedidos p
+WHERE p.estado NOT IN ('cancelado')
+GROUP BY DATE(p.fecha_pedido), YEARWEEK(p.fecha_pedido, 1), YEAR(p.fecha_pedido), MONTH(p.fecha_pedido)
+ORDER BY fecha DESC;
 
 -- Dump completed on 2026-10-18 16:02:37
