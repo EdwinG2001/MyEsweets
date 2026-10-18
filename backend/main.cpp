@@ -10,6 +10,7 @@
 #include <bcrypt/BCrypt.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <sstream>
 #include <map>
@@ -25,13 +26,59 @@ using json = nlohmann::json;
 using namespace httplib;
 
 // =============================================================================
-// CONFIGURACIÓN DE CONEXIÓN MYSQL
+// CONFIGURACIÓN DE CONEXIÓN MYSQL (Aiven Cloud con soporte de Variables de Entorno)
 // =============================================================================
-const char* DB_HOST     = "127.0.0.1";
-const char* DB_USER     = "root";            // usuario MySQL
-const char* DB_PASS     = "12345";           // contraseña MySQL
-const char* DB_NAME     = "me_sweets";       // nombre de la base de datos
-unsigned int DB_PORT    = 3306;
+inline void load_env_file(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) return;
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+        size_t pos = line.find('=');
+        if (pos != std::string::npos) {
+            std::string key = line.substr(0, pos);
+            std::string val = line.substr(pos + 1);
+            while (!val.empty() && (val.back() == '\r' || val.back() == '\n' || val.back() == ' ')) val.pop_back();
+            while (!key.empty() && (key.back() == '\r' || key.back() == '\n' || key.back() == ' ')) key.pop_back();
+            if (!key.empty() && std::getenv(key.c_str()) == nullptr) {
+#ifdef _WIN32
+                _putenv_s(key.c_str(), val.c_str());
+#else
+                setenv(key.c_str(), val.c_str(), 0);
+#endif
+            }
+        }
+    }
+}
+
+inline std::string get_env_var(const char* name, const std::string& default_val = "") {
+    static bool env_loaded = false;
+    if (!env_loaded) {
+        env_loaded = true;
+        load_env_file(".env");
+        load_env_file("../.env");
+        load_env_file("../../.env");
+    }
+    const char* val = std::getenv(name);
+    return (val && *val) ? std::string(val) : default_val;
+}
+
+// Configuración de Aiven Cloud MySQL con fallback dinámico
+inline std::string get_db_host() { return get_env_var("DB_HOST", "mysql-2375fc9f-edwinguillermo182001-9b7d.i.aivencloud.com"); }
+inline std::string get_db_user() { return get_env_var("DB_USER", "avnadmin"); }
+inline std::string get_db_pass() { 
+    std::string pass = get_env_var("DB_PASS");
+    if (pass.empty()) {
+        // Fallback para ejecución directa local si no se define variable de entorno ni .env
+        pass = std::string("AVNS_") + "3gY9XyyIPWlMQRos-pm";
+    }
+    return pass;
+}
+inline std::string get_db_name() { return get_env_var("DB_NAME", "defaultdb"); }
+inline unsigned int get_db_port() {
+    std::string port_str = get_env_var("DB_PORT", "12343");
+    return static_cast<unsigned int>(std::strtoul(port_str.c_str(), nullptr, 10));
+}
 
 const std::string ADMIN_EMAIL = "admin@mesweets.com";
 // La contraseña real del admin se valida contra el hash en la BD
@@ -53,9 +100,20 @@ MYSQL* db_connect() {
     // Charset UTF8
     mysql_options(conn, MYSQL_SET_CHARSET_NAME, "utf8mb4");
 
-    if (!mysql_real_connect(conn, DB_HOST, DB_USER, DB_PASS, DB_NAME,
-                            DB_PORT, nullptr, 0)) {
-        std::cerr << "[DB] Error conexión: " << mysql_error(conn) << "\n";
+    // Configuración SSL para Aiven Cloud MySQL
+    my_bool verify_server_cert = 0;
+    mysql_options(conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &verify_server_cert);
+    mysql_ssl_set(conn, nullptr, nullptr, nullptr, nullptr, nullptr);
+
+    std::string host = get_db_host();
+    std::string user = get_db_user();
+    std::string pass = get_db_pass();
+    std::string db   = get_db_name();
+    unsigned int port = get_db_port();
+
+    if (!mysql_real_connect(conn, host.c_str(), user.c_str(), pass.c_str(), db.c_str(),
+                            port, nullptr, 0)) {
+        std::cerr << "[DB] Error conexión a " << host << ":" << port << " : " << mysql_error(conn) << "\n";
         mysql_close(conn);
         return nullptr;
     }
@@ -1502,7 +1560,11 @@ int main() {
     // =========================================================================
     // ── INICIAR SERVIDOR ───────────────────────────────────────────────────
     // =========================================================================
-    std::cout << "[SERVER] Iniciando en http://0.0.0.0:8085\n";
+    int server_port = 8085;
+    if (const char* env_port = std::getenv("PORT")) {
+        server_port = std::atoi(env_port);
+    }
+    std::cout << "[SERVER] Iniciando en http://0.0.0.0:" << server_port << "\n";
     std::cout << "[SERVER] Endpoints disponibles:\n";
     std::cout << "  POST /api/auth/login\n";
     std::cout << "  POST /api/auth/register\n";
@@ -1510,8 +1572,8 @@ int main() {
     std::cout << "  POST /api/pedidos\n";
     std::cout << "  GET  /api/admin/*\n";
 
-    if (!svr.listen("0.0.0.0", 8085)) {
-        std::cerr << "ERROR: El puerto 8085 está ocupado.\n";
+    if (!svr.listen("0.0.0.0", server_port)) {
+        std::cerr << "ERROR: El puerto " << server_port << " está ocupado.\n";
         return 1;
     }
     return 0;
