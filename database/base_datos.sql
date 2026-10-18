@@ -758,4 +758,230 @@ SET character_set_client = @saved_cs_client;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
+-- =============================================================================
+-- STORED PROCEDURES
+-- =============================================================================
+
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS `sp_crear_pedido`$$
+CREATE PROCEDURE `sp_crear_pedido`(
+    IN  p_cliente_id      INT UNSIGNED,
+    IN  p_tipo_postre_id  INT UNSIGNED,
+    IN  p_base_id         INT UNSIGNED,
+    IN  p_cobertura_id    INT UNSIGNED,
+    IN  p_licor_id        INT UNSIGNED,
+    IN  p_porciones       INT UNSIGNED,
+    IN  p_sin_alcohol     TINYINT(1),
+    IN  p_tipo_empaque    VARCHAR(20),
+    IN  p_direccion       TEXT,
+    IN  p_notas           TEXT,
+    OUT p_pedido_id       INT UNSIGNED,
+    OUT p_mensaje         VARCHAR(500)
+)
+BEGIN
+    DECLARE v_stock_cob    DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_gxp          DECIMAL(8,2)  DEFAULT 0;
+    DECLARE v_g_nec        DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_stock_licor  DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_mlxp         DECIMAL(6,2)  DEFAULT 0;
+    DECLARE v_ml_nec       DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_p_base       DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_p_cob        DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_p_licor      DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_precio_total DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_stock_base   INT           DEFAULT 0;
+    DECLARE v_ok           TINYINT(1)    DEFAULT 1;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET p_pedido_id = 0;
+        SET p_mensaje = 'ERROR: Fallo en la transaccion. Intente de nuevo.';
+    END;
+
+    SET p_pedido_id = 0;
+    SET p_mensaje   = 'ERROR: Proceso no iniciado';
+
+    START TRANSACTION;
+
+    SELECT stock_gramos, gramos_por_porcion, precio_venta_sugerido
+    INTO v_stock_cob, v_gxp, v_p_cob
+    FROM coberturas WHERE id = p_cobertura_id AND activo = 1 FOR UPDATE;
+
+    SET v_g_nec = v_gxp * p_porciones;
+    IF v_stock_cob < v_g_nec THEN
+        ROLLBACK;
+        SET p_pedido_id = 0;
+        SET p_mensaje = CONCAT('Stock insuficiente de cobertura. Disponible: ', v_stock_cob, 'g, Requerido: ', v_g_nec, 'g');
+        SET v_ok = 0;
+    END IF;
+
+    IF v_ok = 1 THEN
+        SELECT stock_porciones, precio_venta_sugerido
+        INTO v_stock_base, v_p_base
+        FROM bases_postre WHERE id = p_base_id AND activo = 1 FOR UPDATE;
+
+        IF v_stock_base < p_porciones THEN
+            ROLLBACK;
+            SET p_pedido_id = 0;
+            SET p_mensaje = CONCAT('Stock insuficiente de base. Disponible: ', v_stock_base, ' porciones, Requerido: ', p_porciones);
+            SET v_ok = 0;
+        END IF;
+    END IF;
+
+    IF v_ok = 1 THEN
+        SET v_p_licor = 0.00;
+        IF p_licor_id IS NOT NULL AND p_sin_alcohol = 0 THEN
+            SELECT stock_ml, ml_por_porcion, recargo_porcion
+            INTO v_stock_licor, v_mlxp, v_p_licor
+            FROM licores WHERE id = p_licor_id AND activo = 1 FOR UPDATE;
+
+            SET v_ml_nec = v_mlxp * p_porciones;
+            IF v_stock_licor < v_ml_nec THEN
+                ROLLBACK;
+                SET p_pedido_id = 0;
+                SET p_mensaje = CONCAT('Stock insuficiente de licor. Disponible: ', v_stock_licor, 'ml, Requerido: ', v_ml_nec, 'ml');
+                SET v_ok = 0;
+            END IF;
+        END IF;
+    END IF;
+
+    IF v_ok = 1 THEN
+        SET v_precio_total = (COALESCE(v_p_base, 2.00) + COALESCE(v_p_cob, 0.00) + COALESCE(v_p_licor, 0.00)) * p_porciones;
+
+        INSERT INTO pedidos (
+            cliente_id, tipo_postre_id, base_id, cobertura_id, licor_id,
+            porciones, sin_alcohol, tipo_empaque, estado,
+            precio_base_unit, precio_cobertura, precio_licor, precio_total,
+            direccion_entrega, notas_cliente, stock_reservado, fecha_entrega_est
+        ) VALUES (
+            p_cliente_id, p_tipo_postre_id, p_base_id, p_cobertura_id,
+            IF(p_sin_alcohol=1, NULL, p_licor_id),
+            p_porciones, p_sin_alcohol, p_tipo_empaque, 'pendiente',
+            COALESCE(v_p_base,0), COALESCE(v_p_cob,0), COALESCE(v_p_licor,0), v_precio_total,
+            p_direccion, p_notas, 1, DATE_ADD(NOW(), INTERVAL 2 DAY)
+        );
+
+        SET p_pedido_id = LAST_INSERT_ID();
+
+        UPDATE coberturas SET stock_gramos = stock_gramos - v_g_nec WHERE id = p_cobertura_id;
+        INSERT INTO movimientos_inventario (tipo_recurso, recurso_id, usuario_id, pedido_id, tipo_movimiento, cantidad, cantidad_antes, cantidad_despues, motivo)
+        VALUES ('cobertura', p_cobertura_id, p_cliente_id, p_pedido_id, 'salida', v_g_nec, v_stock_cob, v_stock_cob - v_g_nec, CONCAT('Pedido #', p_pedido_id));
+
+        UPDATE bases_postre SET stock_porciones = stock_porciones - p_porciones WHERE id = p_base_id;
+        INSERT INTO movimientos_inventario (tipo_recurso, recurso_id, usuario_id, pedido_id, tipo_movimiento, cantidad, cantidad_antes, cantidad_despues, motivo)
+        VALUES ('base_postre', p_base_id, p_cliente_id, p_pedido_id, 'salida', p_porciones, v_stock_base, v_stock_base - p_porciones, CONCAT('Pedido #', p_pedido_id));
+
+        IF p_licor_id IS NOT NULL AND p_sin_alcohol = 0 THEN
+            UPDATE licores SET stock_ml = stock_ml - v_ml_nec WHERE id = p_licor_id;
+            INSERT INTO movimientos_inventario (tipo_recurso, recurso_id, usuario_id, pedido_id, tipo_movimiento, cantidad, cantidad_antes, cantidad_despues, motivo)
+            VALUES ('licor', p_licor_id, p_cliente_id, p_pedido_id, 'salida', v_ml_nec, v_stock_licor, v_stock_licor - v_ml_nec, CONCAT('Pedido #', p_pedido_id));
+        END IF;
+
+        COMMIT;
+        SET p_mensaje = 'OK';
+    END IF;
+END$$
+
+DROP PROCEDURE IF EXISTS `sp_cambiar_estado_pedido`$$
+CREATE PROCEDURE `sp_cambiar_estado_pedido`(
+    IN  p_pedido_id    INT UNSIGNED,
+    IN  p_nuevo_estado VARCHAR(20),
+    IN  p_admin_id     INT UNSIGNED,
+    IN  p_notas        TEXT,
+    OUT p_resultado    VARCHAR(200)
+)
+BEGIN
+    DECLARE v_estado_actual VARCHAR(20);
+    SELECT estado INTO v_estado_actual FROM pedidos WHERE id = p_pedido_id;
+    IF v_estado_actual IS NULL THEN
+        SET p_resultado = 'ERROR: Pedido no encontrado';
+    ELSEIF v_estado_actual IN ('entregado','cancelado') THEN
+        SET p_resultado = CONCAT('ERROR: No se puede cambiar desde estado: ', v_estado_actual);
+    ELSE
+        UPDATE pedidos SET estado = p_nuevo_estado, notas_admin = COALESCE(p_notas, notas_admin) WHERE id = p_pedido_id;
+        SET p_resultado = 'OK';
+    END IF;
+END$$
+
+DROP PROCEDURE IF EXISTS `sp_generar_orden_produccion`$$
+CREATE PROCEDURE `sp_generar_orden_produccion`(
+    IN  p_pedido_id  INT UNSIGNED,
+    IN  p_admin_id   INT UNSIGNED,
+    OUT p_op_id      INT UNSIGNED,
+    OUT p_mensaje    VARCHAR(200)
+)
+BEGIN
+    DECLARE v_existe    INT DEFAULT 0;
+    DECLARE v_base      VARCHAR(150) DEFAULT '—';
+    DECLARE v_cob       VARCHAR(150) DEFAULT '—';
+    DECLARE v_licor     VARCHAR(150) DEFAULT 'Sin alcohol';
+    DECLARE v_ml_licor  DECIMAL(6,2) DEFAULT 0;
+    DECLARE v_porciones INT          DEFAULT 1;
+    DECLARE v_tipo      VARCHAR(100) DEFAULT '—';
+    DECLARE v_detalles  JSON;
+    DECLARE v_tecnica   VARCHAR(200) DEFAULT 'Pincelado con brocha de silicona';
+
+    SET p_op_id   = 0;
+    SET p_mensaje = 'ERROR: Proceso no iniciado';
+
+    SELECT COUNT(*) INTO v_existe FROM ordenes_produccion WHERE pedido_id = p_pedido_id;
+    IF v_existe > 0 THEN
+        SET p_mensaje = 'ERROR: Ya existe orden para este pedido';
+        SET p_op_id = 0;
+    ELSE
+        SELECT COALESCE(bp.nombre,'—'), COALESCE(c.nombre,'—'),
+               COALESCE(l.nombre,'Sin alcohol'), COALESCE(l.ml_por_porcion,0),
+               p.porciones, COALESCE(tp.nombre,'—')
+        INTO v_base, v_cob, v_licor, v_ml_licor, v_porciones, v_tipo
+        FROM pedidos p
+        LEFT JOIN bases_postre bp ON bp.id = p.base_id
+        LEFT JOIN coberturas   c  ON c.id  = p.cobertura_id
+        LEFT JOIN licores      l  ON l.id  = p.licor_id
+        LEFT JOIN tipos_postre tp ON tp.id = p.tipo_postre_id
+        WHERE p.id = p_pedido_id;
+
+        IF v_ml_licor > 0 THEN
+            SET v_tecnica = 'Impregnacion: pincelado capas con licor, 5 min reposo entre capas';
+        END IF;
+
+        SET v_detalles = JSON_OBJECT(
+            'tipo_postre', v_tipo, 'base', v_base, 'cobertura', v_cob,
+            'licor', v_licor, 'porciones', v_porciones,
+            'ml_licor_total', v_ml_licor * v_porciones,
+            'ml_licor_porcion', v_ml_licor, 'tecnica', v_tecnica
+        );
+
+        INSERT INTO ordenes_produccion (pedido_id, generado_por, porciones, detalles_json, tecnica_impreg, estado)
+        VALUES (p_pedido_id, p_admin_id, v_porciones, v_detalles, v_tecnica, 'pendiente');
+
+        SET p_op_id = LAST_INSERT_ID();
+        SET p_mensaje = 'OK';
+        UPDATE pedidos SET estado = 'en_preparacion' WHERE id = p_pedido_id;
+    END IF;
+END$$
+
+DELIMITER ;
+
+-- =============================================================================
+-- VISTA DE INGREDIENTES EN ALERTA
+-- =============================================================================
+
+CREATE OR REPLACE VIEW `v_ingredientes_alerta` AS
+SELECT
+    i.id, i.nombre, i.unidad_medida,
+    i.stock_actual, i.stock_minimo, i.precio_unitario,
+    i.fecha_caducidad, i.lote,
+    p.nombre AS proveedor,
+    CASE
+        WHEN i.stock_actual = 0                    THEN 'SIN_STOCK'
+        WHEN i.stock_actual <= i.stock_minimo      THEN 'STOCK_BAJO'
+        ELSE 'NORMAL'
+    END AS estado_stock,
+    DATEDIFF(i.fecha_caducidad, CURDATE()) AS dias_para_caducidad
+FROM ingredientes i
+LEFT JOIN proveedores p ON p.id = i.proveedor_id
+WHERE i.activo = 1;
+
 -- Dump completed on 2026-10-18 16:02:37
