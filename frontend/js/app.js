@@ -3,7 +3,7 @@
 // Configurador interactivo, auth, pedidos
 // =============================================================================
 
-const API_BASE = `http://${window.location.hostname || '127.0.0.1'}:8085/api`;
+const API_BASE = 'https://mesweets-backend.onrender.com/api';
 
 // ─── Estado global del configurador ──────────────────────────────────────────
 let config = {

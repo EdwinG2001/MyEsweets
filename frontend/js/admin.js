@@ -2,7 +2,7 @@
 // M&E SWEETS — admin.js (Panel Administrador)
 // =============================================================================
 
-const API = `http://${window.location.hostname || '127.0.0.1'}:8085/api`;
+const API = 'https://mesweets-backend.onrender.com/api';
 let adminSession = JSON.parse(localStorage.getItem('mesweets_session') || 'null');
 let currentPage  = 'dashboard';
 
