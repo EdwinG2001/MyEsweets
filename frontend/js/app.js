@@ -140,19 +140,34 @@ async function loadFrutas() {
     const grid = document.getElementById('frutas-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    const icons = {'Fresa':'🍓','Fresas':'🍓','Piña':'🍍','Durazno':'🍑','Sin Fruta':'🚫'};
+    const icons = {
+      'Fresa':'🍓','Fresas':'🍓','Piña':'🍍','Durazno':'🍑',
+      'Manzana':'🍏','Manzanas':'🍏','Apple':'🍏',
+      'Kiwi':'🥝','Plátano':'🍌','Banano':'🍌','Banana':'🍌',
+      'Mora':'🫐','Moras':'🫐','Arándano':'🫐','Arándanos':'🫐','Blueberry':'🫐',
+      'Cereza':'🍒','Cerezas':'🍒','Mango':'🥭','Uva':'🍇','Uvas':'🍇',
+      'Coco':'🥥','Maracuyá':'🍈','Limón':'🍋','Naranja':'🍊','Sin Fruta':'🚫'
+    };
     data.forEach(f => {
       const pFruta = parseFloat(f.precio_venta_sugerido) || 0;
       const precioTxt = pFruta > 0 ? `+$${pFruta.toFixed(2)}/p.` : '✓ Fruta incluida';
-      let icon = f.imagen_url || '🍓';
-      for (const [k, v] of Object.entries(icons)) {
-        if (f.nombre.includes(k)) { icon = v; break; }
+      let icon = f.imagen_url && f.imagen_url.trim() ? f.imagen_url.trim() : '';
+      if (!icon) {
+        for (const [k, v] of Object.entries(icons)) {
+          if (f.nombre.toLowerCase().includes(k.toLowerCase())) { icon = v; break; }
+        }
       }
+      if (!icon) icon = '🍓';
+      const isImgUrl = icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('/') || icon.startsWith('data:');
+      const iconHtml = isImgUrl 
+        ? `<div class="option-icon" style="display:flex;align-items:center;justify-content:center"><img src="${escHtml(icon)}" alt="${escHtml(f.nombre)}" style="width:36px;height:36px;object-fit:cover;border-radius:6px"></div>`
+        : `<div class="option-icon">${icon}</div>`;
+
       const isSelected = (config.fruta_id == f.id) || (!config.fruta_id && f.id == 4);
       grid.innerHTML += `
         <div class="option-card ${isSelected ? 'selected' : ''}" data-fruta-id="${f.id}" data-precio="${pFruta}"
              onclick="selectOption(this,'fruta',${f.id},'${escHtml(f.nombre)}',${pFruta})">
-          <div class="option-icon">${icon}</div>
+          ${iconHtml}
           <div class="option-name">${escHtml(f.nombre)}</div>
           <div class="option-price" style="font-weight:600;color:var(--color-terracotta)">${precioTxt}</div>
           <div class="option-stock">${escHtml(f.descripcion || '')}</div>

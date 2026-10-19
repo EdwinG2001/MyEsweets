@@ -163,6 +163,9 @@
       <div class="nav-item" id="nav-licores" onclick="showPage('licores')">
         <span class="nav-icon">🥃</span> Licores
       </div>
+      <div class="nav-item" id="nav-frutas" onclick="showPage('frutas')">
+        <span class="nav-icon">🍓</span> Frutas
+      </div>
       <div class="nav-item" id="nav-productos" onclick="showPage('productos')">
         <span class="nav-icon">🍰</span> Bases & Coberturas
       </div>
@@ -374,27 +377,67 @@
         </div>
       </div>
 
+      <!-- ═══ PAGE: FRUTAS ═══ -->
+      <div class="page" id="page-frutas">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4);flex-wrap:wrap;gap:var(--space-3)">
+          <div style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap">
+            <div class="search-bar" style="max-width:280px">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="buscar-fruta" placeholder="Buscar fruta..." oninput="filtrarFrutas(this.value)">
+              <button id="btn-limpiar-fruta" onclick="limpiarBusquedaFrutas()" style="display:none;background:none;border:none;color:var(--color-gray-400);cursor:pointer;font-size:12px;padding:0 6px">✕</button>
+            </div>
+            <span id="contador-frutas" style="font-size:var(--font-size-xs);color:var(--color-gray-500)"></span>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openModalFruta()">+ Nueva Fruta</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:50px;text-align:center">Icono</th>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th>Stock (g)</th>
+                <th>Stock Mín. (g)</th>
+                <th>g / Porción</th>
+                <th>Recargo PVP</th>
+                <th>Estado Stock</th>
+                <th>Activo</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-frutas"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- ═══ PAGE: PRODUCTOS (Bases y Coberturas) ═══ -->
       <div class="page" id="page-productos">
         <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-6);flex-wrap:wrap">
           <button class="btn btn-primary btn-sm" onclick="openModalBase()">+ Nueva Base</button>
           <button class="btn btn-outline btn-sm" onclick="openModalCobertura()">+ Nueva Cobertura</button>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6)">
+        <div style="display:flex;flex-direction:column;gap:var(--space-8)">
           <div>
-            <h3 style="font-size:var(--font-size-base);font-weight:600;margin-bottom:var(--space-4)">🍰 Bases de Postre</h3>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3)">
+              <h3 style="font-size:var(--font-size-base);font-weight:600;margin:0">🍰 Bases de Postre</h3>
+              <span style="font-size:12px;color:var(--color-gray-500)">Masa y bizcochos artesanales</span>
+            </div>
             <div class="table-wrap">
               <table class="data-table">
-                <thead><tr><th>Nombre</th><th>Stock Porciones</th><th>PVP</th><th>Activo</th><th>Acciones</th></tr></thead>
+                <thead><tr><th>Nombre</th><th>Descripción</th><th>Stock Porciones</th><th>PVP</th><th>Activo</th><th>Acciones</th></tr></thead>
                 <tbody id="tabla-bases"></tbody>
               </table>
             </div>
           </div>
           <div>
-            <h3 style="font-size:var(--font-size-base);font-weight:600;margin-bottom:var(--space-4)">🎂 Coberturas</h3>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3)">
+              <h3 style="font-size:var(--font-size-base);font-weight:600;margin:0">🎂 Coberturas</h3>
+              <span style="font-size:12px;color:var(--color-gray-500)">Cremas, glaseados y baños de dulce</span>
+            </div>
             <div class="table-wrap">
               <table class="data-table">
-                <thead><tr><th>Nombre</th><th>Stock (g)</th><th>PVP</th><th>Activo</th><th>Acciones</th></tr></thead>
+                <thead><tr><th>Nombre</th><th>Descripción</th><th>Stock (g)</th><th>g / Porción</th><th>PVP</th><th>Activo</th><th>Acciones</th></tr></thead>
                 <tbody id="tabla-coberturas"></tbody>
               </table>
             </div>
@@ -676,6 +719,76 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-cobertura')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveCobertura()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Fruta -->
+<div class="modal-backdrop" id="modal-fruta">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-fruta-title">Nueva Fruta</span>
+      <button class="modal-close" onclick="closeModal('modal-fruta')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="fruta-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Nombre de la Fruta *</label>
+          <input type="text" id="fruta-nombre" class="form-control" placeholder="Ej: Manzana Verde en Láminas">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Icono / Emoji o URL de Imagen</label>
+          <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">
+            <input type="text" id="fruta-icono" class="form-control" placeholder="🍓 o 🍏 o https://..." style="max-width:140px">
+            <div style="display:flex;gap:3px;flex-wrap:wrap">
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍓')">🍓</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍍')">🍍</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍑')">🍑</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍏')">🍏</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍎')">🍎</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍌')">🍌</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🥝')">🥝</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🫐')">🫐</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍒')">🍒</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🥭')">🥭</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🍇')">🍇</button>
+              <button type="button" class="btn btn-sm btn-ghost" style="padding:2px 6px" onclick="setFrutaIcon('🥥')">🥥</button>
+            </div>
+          </div>
+          <span style="font-size:11px;color:var(--color-gray-500)">Si lo dejas vacío, el sistema asignará el emoji automáticamente según el nombre.</span>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Descripción para el cliente</label>
+          <textarea id="fruta-desc" class="form-control" rows="2" placeholder="Láminas crujientes y frescas de manzana verde..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock actual (g) *</label>
+          <input type="number" id="fruta-stock" class="form-control" min="0" step="10" placeholder="2000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock mínimo (g) *</label>
+          <input type="number" id="fruta-stock-min" class="form-control" min="0" step="10" placeholder="300">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Gramos por porción (g) *</label>
+          <input type="number" id="fruta-gxp" class="form-control" min="1" step="1" value="25">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Recargo por porción ($) (0 = incluida)</label>
+          <input type="number" id="fruta-pvp" class="form-control" min="0" step="0.05" value="0.00">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label" style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer">
+            <input type="checkbox" id="fruta-activo" checked style="width:16px;height:16px">
+            Fruta disponible / activa en el catálogo
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-fruta')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveFruta()">Guardar Fruta</button>
     </div>
   </div>
 </div>

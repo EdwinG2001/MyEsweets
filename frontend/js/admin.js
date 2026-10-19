@@ -93,6 +93,7 @@ function showPage(page) {
     case 'pedidos':      loadPedidosAdmin();    break;
     case 'ingredientes': loadIngredientes();    break;
     case 'licores':      loadLicores();         break;
+    case 'frutas':       loadFrutasAdmin();     break;
     case 'productos':    loadProductos();       break;
     case 'movimientos':  loadMovimientos();     break;
     case 'clientes':     loadClientes();        break;
@@ -103,7 +104,7 @@ function showPage(page) {
 
 const pageTitles = {
   dashboard:'Dashboard', pedidos:'Pedidos', ingredientes:'Ingredientes',
-  licores:'Licores', productos:'Bases & Coberturas', movimientos:'Historial Inventario',
+  licores:'Licores', frutas:'Frutas Frescas & Decoración', productos:'Bases & Coberturas', movimientos:'Historial Inventario',
   clientes:'Clientes', reportes:'Reportes', configuracion:'Configuración del Sistema'
 };
 
@@ -797,6 +798,182 @@ async function deleteLicor(id, nombre) {
   if (ok) { showToast('Licor desactivado', 'success'); loadLicores(); }
 }
 
+// ─── FRUTAS ───────────────────────────────────────────────────────────────────
+let allFrutas = [];
+
+async function loadFrutasAdmin() {
+  const tbody = document.getElementById('tabla-frutas');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center"><div class="spinner" style="margin:auto;margin-top:20px"></div></td></tr>';
+  try {
+    allFrutas = await apiGet('/admin/frutas');
+    const input = document.getElementById('buscar-fruta');
+    const query = input ? input.value : '';
+    filtrarFrutas(query);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="10" style="color:var(--color-danger)">${e.message}</td></tr>`;
+  }
+}
+
+function renderTablaFrutas(lista) {
+  const tbody = document.getElementById('tabla-frutas');
+  const contador = document.getElementById('contador-frutas');
+  if (contador) contador.textContent = `${lista.length} de ${allFrutas.length} frutas`;
+
+  const estadoClass = { NORMAL:'badge-success', STOCK_BAJO:'badge-warning', SIN_STOCK:'badge-danger' };
+
+  if (!lista.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:var(--space-8);color:var(--color-gray-400)">🔍 No se encontraron frutas</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = lista.map(f => {
+    const isSinFruta = parseInt(f.id) === 4;
+    const stockDisplay = isSinFruta ? 'Infinito' : `${parseFloat(f.stock_gramos||0).toFixed(0)} g`;
+    const stockMinDisplay = isSinFruta ? '—' : `${parseFloat(f.stock_minimo_gramos||0).toFixed(0)} g`;
+    const gxpDisplay = isSinFruta ? '—' : `${parseFloat(f.gramos_por_porcion||0).toFixed(0)} g`;
+    const pvp = parseFloat(f.precio_venta_sugerido||0);
+    const pvpDisplay = pvp > 0 ? `+$${pvp.toFixed(2)}` : 'Incluida ($0.00)';
+    const icon = f.imagen_url || '🍓';
+
+    return `
+    <tr>
+      <td style="font-size:20px;text-align:center">${icon}</td>
+      <td><strong>${escH(f.nombre)}</strong></td>
+      <td style="font-size:12px;color:var(--color-gray-600)">${escH(f.descripcion||'—')}</td>
+      <td style="font-weight:600">${stockDisplay}</td>
+      <td>${stockMinDisplay}</td>
+      <td>${gxpDisplay}</td>
+      <td style="font-weight:600;color:var(--color-chocolate)">${pvpDisplay}</td>
+      <td><span class="badge ${estadoClass[f.estado_stock]||'badge-info'}">${f.estado_stock||'NORMAL'}</span></td>
+      <td>${f.activo == 1 ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm btn-ghost" title="Editar fruta" onclick="editFruta(${JSON.stringify(f).replace(/"/g,'&quot;')})">✏️</button>
+          ${!isSinFruta ? `<button class="btn btn-sm btn-ghost" style="color:var(--color-danger)" title="Desactivar" onclick="deleteFruta(${f.id},'${escH(f.nombre)}')">🗑</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filtrarFrutas(query) {
+  const q = (query || '').toLowerCase().trim();
+  const btnLimpiar = document.getElementById('btn-limpiar-fruta');
+  if (btnLimpiar) btnLimpiar.style.display = q ? 'block' : 'none';
+
+  if (!q) {
+    renderTablaFrutas(allFrutas);
+    return;
+  }
+  const filtrados = allFrutas.filter(f =>
+    (f.nombre || '').toLowerCase().includes(q) ||
+    (f.descripcion || '').toLowerCase().includes(q) ||
+    (f.estado_stock || '').toLowerCase().includes(q)
+  );
+  renderTablaFrutas(filtrados);
+}
+window.filtrarFrutas = filtrarFrutas;
+
+function limpiarBusquedaFrutas() {
+  const input = document.getElementById('buscar-fruta');
+  if (input) input.value = '';
+  filtrarFrutas('');
+}
+window.limpiarBusquedaFrutas = limpiarBusquedaFrutas;
+
+function setFrutaIcon(emoji) {
+  const input = document.getElementById('fruta-icono');
+  if (input) input.value = emoji;
+}
+window.setFrutaIcon = setFrutaIcon;
+
+function openModalFruta() {
+  clearForm(['fruta-id','fruta-nombre','fruta-icono','fruta-desc','fruta-stock','fruta-stock-min','fruta-pvp']);
+  document.getElementById('fruta-gxp').value = '25';
+  document.getElementById('fruta-pvp').value = '0.00';
+  document.getElementById('fruta-activo').checked = true;
+  document.getElementById('modal-fruta-title').textContent = 'Nueva Fruta';
+  openModal('modal-fruta');
+}
+window.openModalFruta = openModalFruta;
+
+function editFruta(f) {
+  document.getElementById('fruta-id').value        = f.id;
+  document.getElementById('fruta-nombre').value    = f.nombre;
+  document.getElementById('fruta-icono').value     = f.imagen_url || '';
+  document.getElementById('fruta-desc').value      = f.descripcion || '';
+  document.getElementById('fruta-stock').value     = f.stock_gramos;
+  document.getElementById('fruta-stock-min').value = f.stock_minimo_gramos;
+  document.getElementById('fruta-gxp').value       = f.gramos_por_porcion;
+  document.getElementById('fruta-pvp').value       = f.precio_venta_sugerido;
+  document.getElementById('fruta-activo').checked  = (f.activo == 1);
+  document.getElementById('modal-fruta-title').textContent = `Editar Fruta: ${f.nombre}`;
+  openModal('modal-fruta');
+}
+window.editFruta = editFruta;
+
+async function saveFruta() {
+  const id = document.getElementById('fruta-id').value;
+  const nombre = document.getElementById('fruta-nombre').value.trim();
+  if (!nombre) {
+    showToast('El nombre de la fruta es obligatorio', 'error');
+    return;
+  }
+  let icon = document.getElementById('fruta-icono').value.trim();
+  if (!icon) {
+    const defaultFruitIcons = {
+      'fresa': '🍓', 'piña': '🍍', 'durazno': '🍑', 'manzana': '🍏',
+      'kiwi': '🥝', 'plátano': '🍌', 'banana': '🍌', 'mora': '🫐',
+      'arándano': '🫐', 'cereza': '🍒', 'mango': '🥭', 'uva': '🍇',
+      'coco': '🥥', 'maracuyá': '🍈', 'limón': '🍋', 'naranja': '🍊'
+    };
+    const nLow = nombre.toLowerCase();
+    for (const [k, v] of Object.entries(defaultFruitIcons)) {
+      if (nLow.includes(k)) { icon = v; break; }
+    }
+    if (!icon) icon = '🍓';
+  }
+
+  const body = {
+    nombre,
+    descripcion:           document.getElementById('fruta-desc').value.trim(),
+    imagen_url:            icon,
+    stock_gramos:          parseFloat(document.getElementById('fruta-stock').value)||0,
+    stock_minimo_gramos:   parseFloat(document.getElementById('fruta-stock-min').value)||300,
+    gramos_por_porcion:    parseFloat(document.getElementById('fruta-gxp').value)||25,
+    precio_venta_sugerido: parseFloat(document.getElementById('fruta-pvp').value)||0,
+    costo_base:            0.0,
+    activo:                document.getElementById('fruta-activo').checked ? 1 : 0
+  };
+
+  const { ok, data } = id ? await apiPut(`/admin/frutas/${id}`, body) : await apiPost('/admin/frutas', body);
+  if (ok) {
+    showToast(id ? 'Fruta actualizada con éxito' : 'Fruta creada con éxito', 'success');
+    closeModal('modal-fruta');
+    loadFrutasAdmin();
+  } else {
+    showToast(data.error || 'Error al guardar fruta', 'error');
+  }
+}
+window.saveFruta = saveFruta;
+
+async function deleteFruta(id, nombre) {
+  if (id === 4 || id === '4') {
+    showToast('No se puede desactivar la opción Sin Fruta', 'warning');
+    return;
+  }
+  if (!confirm(`¿Desactivar la fruta "${nombre}" del catálogo?`)) return;
+  const { ok, data } = await apiDelete(`/admin/frutas/${id}`);
+  if (ok) {
+    showToast('Fruta desactivada', 'success');
+    loadFrutasAdmin();
+  } else {
+    showToast(data.error || 'Error', 'error');
+  }
+}
+window.deleteFruta = deleteFruta;
+
 // ─── BASES Y COBERTURAS ───────────────────────────────────────────────────────
 async function loadProductos() {
   await Promise.all([loadBases(), loadCoberturas()]);
@@ -809,14 +986,15 @@ async function loadBases() {
     tbody.innerHTML = data.map(b => `
       <tr>
         <td><strong>${escH(b.nombre)}</strong></td>
-        <td style="font-weight:600">${b.stock_porciones}</td>
+        <td style="font-size:12px;color:var(--color-gray-600)">${escH(b.descripcion||'—')}</td>
+        <td style="font-weight:600">${b.stock_porciones} porc.</td>
         <td>$${parseFloat(b.precio_venta_sugerido||0).toFixed(2)}</td>
         <td>${b.activo=='1'?'<span class="badge badge-success">Activo</span>':'<span class="badge badge-danger">Inactivo</span>'}</td>
         <td>
           <button class="btn btn-sm btn-ghost" onclick="editBase(${JSON.stringify(b).replace(/"/g,'&quot;')})">✏️</button>
         </td>
-      </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--color-gray-400)">Sin bases</td></tr>';
-  } catch(e) { tbody.innerHTML = `<tr><td colspan="5">${e.message}</td></tr>`; }
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--color-gray-400)">Sin bases</td></tr>';
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="6">${e.message}</td></tr>`; }
 }
 
 async function loadCoberturas() {
@@ -826,14 +1004,16 @@ async function loadCoberturas() {
     tbody.innerHTML = data.map(c => `
       <tr>
         <td><strong>${escH(c.nombre)}</strong></td>
+        <td style="font-size:12px;color:var(--color-gray-600)">${escH(c.descripcion||'—')}</td>
         <td style="font-weight:600">${parseFloat(c.stock_gramos||0).toFixed(0)} g</td>
+        <td>${parseFloat(c.gramos_por_porcion||30).toFixed(0)} g</td>
         <td>$${parseFloat(c.precio_venta_sugerido||0).toFixed(2)}</td>
         <td>${c.activo=='1'?'<span class="badge badge-success">Activo</span>':'<span class="badge badge-danger">Inactivo</span>'}</td>
         <td>
           <button class="btn btn-sm btn-ghost" onclick="editCobertura(${JSON.stringify(c).replace(/"/g,'&quot;')})">✏️</button>
         </td>
-      </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--color-gray-400)">Sin coberturas</td></tr>';
-  } catch(e) { tbody.innerHTML = `<tr><td colspan="5">${e.message}</td></tr>`; }
+      </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--color-gray-400)">Sin coberturas</td></tr>';
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="7">${e.message}</td></tr>`; }
 }
 
 function openModalBase() { clearForm(['base-id','base-nombre','base-desc','base-costo','base-pvp','base-stock']); openModal('modal-base'); }

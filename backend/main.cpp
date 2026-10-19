@@ -1268,6 +1268,122 @@ int main() {
     });
 
     // =========================================================================
+    // ── ADMIN: FRUTAS ──────────────────────────────────────────────────────
+    // =========================================================================
+
+    svr.Get("/api/admin/frutas", [](const Request& req, Response& res) {
+        cors_headers(res);
+        MYSQL* conn = db_connect();
+        if (!conn) { send_error(res, 503, "Error BD"); return; }
+        try {
+            auto auth = verify_token(conn, get_token(req));
+            if (!auth.valid || auth.rol_id != 1) { send_error(res, 403, "Acceso denegado"); mysql_close(conn); return; }
+            auto rows = db_query(conn,
+                "SELECT f.*, "
+                "CASE WHEN f.id = 4 THEN 'NORMAL' "
+                "WHEN f.stock_gramos = 0 THEN 'SIN_STOCK' "
+                "WHEN f.stock_gramos <= f.stock_minimo_gramos THEN 'STOCK_BAJO' ELSE 'NORMAL' END AS estado_stock "
+                "FROM frutas f ORDER BY f.id");
+            send_ok(res, rows);
+        } catch (std::exception& e) { send_error(res, 500, e.what()); }
+        mysql_close(conn);
+    });
+
+    svr.Post("/api/admin/frutas", [](const Request& req, Response& res) {
+        cors_headers(res);
+        MYSQL* conn = db_connect();
+        if (!conn) { send_error(res, 503, "Error BD"); return; }
+        try {
+            auto auth = verify_token(conn, get_token(req));
+            if (!auth.valid || auth.rol_id != 1) { send_error(res, 403, "Acceso denegado"); mysql_close(conn); return; }
+            auto b = json::parse(req.body);
+            std::string nombre = db_escape(conn, b.value("nombre", ""));
+            std::string desc   = db_escape(conn, b.value("descripcion", ""));
+            std::string icon   = db_escape(conn, b.value("imagen_url", "🍓"));
+            double costo       = b.value("costo_base", 0.0);
+            double pvp         = b.value("precio_venta_sugerido", 0.0);
+            double stock_g     = b.value("stock_gramos", 0.0);
+            double stock_min   = b.value("stock_minimo_gramos", 300.0);
+            double gxp         = b.value("gramos_por_porcion", 25.0);
+
+            db_exec(conn,
+                "INSERT INTO frutas (nombre, descripcion, costo_base, precio_venta_sugerido, "
+                "stock_gramos, stock_minimo_gramos, gramos_por_porcion, imagen_url) VALUES ('"
+                + nombre + "', '" + desc + "', " + std::to_string(costo) + ", "
+                + std::to_string(pvp) + ", " + std::to_string(stock_g) + ", "
+                + std::to_string(stock_min) + ", " + std::to_string(gxp) + ", '"
+                + icon + "')");
+
+            long long new_id = db_last_id(conn);
+            if (stock_g > 0) {
+                db_exec(conn,
+                    "INSERT INTO movimientos_inventario "
+                    "(tipo_recurso, recurso_id, usuario_id, tipo_movimiento, cantidad, "
+                    "cantidad_antes, cantidad_despues, motivo) VALUES "
+                    "('fruta', " + std::to_string(new_id) + ", " +
+                    std::to_string(auth.user_id) + ", 'entrada', " +
+                    std::to_string(stock_g) + ", 0, " + std::to_string(stock_g) +
+                    ", 'Ingreso inicial')");
+            }
+            send_ok(res, {{"id", new_id}, {"mensaje", "Fruta creada"}}, 201);
+        } catch (std::exception& e) { send_error(res, 500, e.what()); }
+        mysql_close(conn);
+    });
+
+    svr.Put(R"(/api/admin/frutas/(\d+))", [](const Request& req, Response& res) {
+        cors_headers(res);
+        MYSQL* conn = db_connect();
+        if (!conn) { send_error(res, 503, "Error BD"); return; }
+        try {
+            auto auth = verify_token(conn, get_token(req));
+            if (!auth.valid || auth.rol_id != 1) { send_error(res, 403, "Acceso denegado"); mysql_close(conn); return; }
+            std::string id = req.matches[1];
+            auto b = json::parse(req.body);
+            std::string nombre = db_escape(conn, b.value("nombre", ""));
+            std::string desc   = db_escape(conn, b.value("descripcion", ""));
+            std::string icon   = db_escape(conn, b.value("imagen_url", ""));
+            double costo       = b.value("costo_base", 0.0);
+            double pvp         = b.value("precio_venta_sugerido", 0.0);
+            double stock_g     = b.value("stock_gramos", 0.0);
+            double stock_min   = b.value("stock_minimo_gramos", 300.0);
+            double gxp         = b.value("gramos_por_porcion", 25.0);
+            int activo         = b.value("activo", 1);
+
+            db_exec(conn,
+                "UPDATE frutas SET nombre='" + nombre + "', descripcion='" + desc +
+                "', costo_base=" + std::to_string(costo) +
+                ", precio_venta_sugerido=" + std::to_string(pvp) +
+                ", stock_gramos=" + std::to_string(stock_g) +
+                ", stock_minimo_gramos=" + std::to_string(stock_min) +
+                ", gramos_por_porcion=" + std::to_string(gxp) +
+                ", imagen_url='" + icon + "', activo=" + std::to_string(activo) +
+                " WHERE id=" + id);
+
+            send_ok(res, {{"mensaje", "Fruta actualizada"}});
+        } catch (std::exception& e) { send_error(res, 500, e.what()); }
+        mysql_close(conn);
+    });
+
+    svr.Delete(R"(/api/admin/frutas/(\d+))", [](const Request& req, Response& res) {
+        cors_headers(res);
+        MYSQL* conn = db_connect();
+        if (!conn) { send_error(res, 503, "Error BD"); return; }
+        try {
+            auto auth = verify_token(conn, get_token(req));
+            if (!auth.valid || auth.rol_id != 1) { send_error(res, 403, "Acceso denegado"); mysql_close(conn); return; }
+            std::string id = req.matches[1];
+            if (id == "4") {
+                send_error(res, 400, "No se puede desactivar la opción Sin Fruta");
+                mysql_close(conn);
+                return;
+            }
+            db_exec(conn, "UPDATE frutas SET activo = 0 WHERE id = " + id);
+            send_ok(res, {{"mensaje", "Fruta desactivada"}});
+        } catch (std::exception& e) { send_error(res, 500, e.what()); }
+        mysql_close(conn);
+    });
+
+    // =========================================================================
     // ── ADMIN: PEDIDOS ─────────────────────────────────────────────────────
     // =========================================================================
 
