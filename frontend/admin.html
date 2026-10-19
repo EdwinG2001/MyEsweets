@@ -226,8 +226,9 @@
           </div>
           <div class="stat-card dorado">
             <div class="stat-icon">💰</div>
-            <div class="stat-value" id="stat-ingresos-hoy">$0</div>
+            <div class="stat-value" id="stat-ingresos-hoy">$0.00</div>
             <div class="stat-label">Ingresos hoy</div>
+            <div id="stat-ingresos-sub" style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:3px;font-weight:600">Total: $0.00</div>
           </div>
           <div class="stat-card choco">
             <div class="stat-icon">👥</div>
@@ -332,6 +333,58 @@
           <div style="display:flex;gap:var(--space-3);align-items:center">
             <span id="contador-ingredientes" style="font-size:var(--font-size-xs);color:var(--color-gray-600)"></span>
             <button class="btn btn-primary btn-sm" onclick="openModalIngrediente()">+ Nuevo Ingrediente</button>
+          </div>
+        </div>
+        <!-- CUADRO EXPLICATIVO DE UNIDADES Y CONSUMO -->
+        <div style="background:#FFFDF9;border:1px solid #E6CA65;border-radius:var(--radius-lg);padding:var(--space-4) var(--space-5);margin-bottom:var(--space-5);box-shadow:var(--shadow-sm)">
+          <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleGuiaIngredientes()">
+            <div style="display:flex;align-items:center;gap:var(--space-2)">
+              <span style="font-size:20px">💡</span>
+              <div>
+                <strong style="color:var(--color-chocolate);font-size:14px">Guía de Control: Conversión de Compras y Consumo por Porción</strong>
+                <div style="font-size:11px;color:var(--color-gray-500)">Referencia práctica para registrar stock y planificar la producción del taller</div>
+              </div>
+            </div>
+            <button type="button" id="btn-toggle-guia" class="btn btn-sm btn-ghost" style="font-size:12px;color:var(--color-terracotta);padding:4px 8px">
+              ▼ Ocultar Guía
+            </button>
+          </div>
+          <div id="cuerpo-guia-ingredientes" style="margin-top:var(--space-4);display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6);font-size:13px;color:var(--color-gray-800);border-top:1px dashed #E6CA65;padding-top:var(--space-4)">
+            <div>
+              <div style="font-weight:700;color:var(--color-terracotta);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-size:13.5px">
+                <span>⚖️</span> 1. ¿Cómo registrar compras en el inventario?
+              </div>
+              <p style="margin:0 0 8px 0;line-height:1.4">
+                El sistema descuenta en <strong>gramos (g)</strong> y <strong>mililitros (ml)</strong>. Si compras en kilos o litros, debes registrar la cantidad convertida:
+              </p>
+              <ul style="margin:0;padding-left:18px;line-height:1.6">
+                <li><strong>Sólidos (Azúcar, Harina, Polvo de Hornear):</strong> Unidad base = <code>g</code>.<br>
+                  <em>Ejemplo práctico:</em> Si compras <strong>3 paquetes de 1 Kilo de azúcar</strong> (1 kg = 1,000 g), equivale a <strong>3,000 g</strong>. Debes ingresar <code>3000</code> en Stock Actual.</li>
+                <li><strong>Líquidos (Aceite vegetal, Leche, Esencias):</strong> Unidad base = <code>ml</code>.<br>
+                  <em>Ejemplo práctico:</em> Si compras <strong>2 botellas de 1 Litro de aceite</strong> (1 L = 1,000 ml), equivale a <strong>2,000 ml</strong>. Debes ingresar <code>2000</code> en Stock Actual.</li>
+                <li><strong>Huevos y Empaques:</strong> Unidad base = <code>unidad</code>.<br>
+                  <em>Ejemplo:</em> 1 cubeta de huevos de 30 unidades = ingresar <code>30</code> unidades.</li>
+              </ul>
+            </div>
+            <div>
+              <div style="font-weight:700;color:var(--color-terracotta);margin-bottom:8px;display:flex;align-items:center;gap:6px;font-size:13.5px">
+                <span>🍰</span> 2. Consumo estándar por Porción de Torta
+              </div>
+              <p style="margin:0 0 8px 0;line-height:1.4">
+                Insumos promedio estimados que consume elaborar <strong>1 porción individual</strong> de bizcocho artesanal húmedo:
+              </p>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;background:rgba(218,165,32,0.08);padding:10px 14px;border-radius:var(--radius-md);margin-bottom:8px">
+                <div>• <strong>Harina de trigo:</strong> ~35 g</div>
+                <div>• <strong>Azúcar blanca:</strong> ~30 g</div>
+                <div>• <strong>Huevos:</strong> ~0.5 unidad</div>
+                <div>• <strong>Mantequilla/Margarina:</strong> ~20 g</div>
+                <div>• <strong>Aceite vegetal:</strong> ~12 ml</div>
+                <div>• <strong>Leche líquida:</strong> ~25 ml</div>
+              </div>
+              <div style="font-size:12px;color:var(--color-chocolate);background:#FFF8E7;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;line-height:1.4">
+                🎂 <strong>Para 1 Torta Completa (8 porciones):</strong> Multiplica por 8 → Requiere aprox. <strong>280g de harina</strong>, <strong>240g de azúcar</strong>, <strong>4 huevos</strong>, <strong>160g de mantequilla</strong> y <strong>100ml de aceite</strong>.
+              </div>
+            </div>
           </div>
         </div>
         <div class="table-wrap">

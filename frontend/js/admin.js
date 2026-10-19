@@ -207,11 +207,22 @@ async function loadStats() {
     const clientes = clientesRes.status === 'fulfilled' && Array.isArray(clientesRes.value) ? clientesRes.value : [];
     const criticos = criticosRes.status === 'fulfilled' && criticosRes.value ? criticosRes.value : { ingredientes:[], licores:[] };
 
-    // Fecha local real (evita desfase UTC en Ecuador UTC-5)
+    // Fecha local real (convierte fecha UTC del servidor a la zona horaria del cliente)
     const _now = new Date();
-    const hoy = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
-    const pedidosHoy = pedidos.filter(p => p.fecha_pedido?.startsWith(hoy));
+    const isSameDayLocal = (fechaStr) => {
+      if (!fechaStr) return false;
+      const d = parseUtcDate(fechaStr);
+      if (!d || isNaN(d.getTime())) return false;
+      return d.getFullYear() === _now.getFullYear() &&
+             d.getMonth() === _now.getMonth() &&
+             d.getDate() === _now.getDate();
+    };
+
+    const pedidosHoy = pedidos.filter(p => isSameDayLocal(p.fecha_pedido));
     const ingresosHoy = pedidosHoy
+      .filter(p => p.estado !== 'cancelado')
+      .reduce((s, p) => s + parseFloat(p.precio_total||0), 0);
+    const ingresosTotales = pedidos
       .filter(p => p.estado !== 'cancelado')
       .reduce((s, p) => s + parseFloat(p.precio_total||0), 0);
     const pendientes = pedidos.filter(p => p.estado === 'pendiente');
@@ -221,6 +232,10 @@ async function loadStats() {
     }
     if (document.getElementById('stat-ingresos-hoy')) {
       document.getElementById('stat-ingresos-hoy').textContent = '$' + ingresosHoy.toFixed(2);
+    }
+    const subIngresos = document.getElementById('stat-ingresos-sub');
+    if (subIngresos) {
+      subIngresos.textContent = `Total: $${ingresosTotales.toFixed(2)}`;
     }
     if (document.getElementById('stat-clientes')) {
       document.getElementById('stat-clientes').textContent     = clientes.length;
@@ -242,6 +257,7 @@ async function loadPedidosRecientes() {
   const el = document.getElementById('pedidos-recientes-list');
   try {
     const data = await apiGet('/admin/pedidos');
+    data.sort((a, b) => (parseInt(b.id || b.pedido_id) || 0) - (parseInt(a.id || a.pedido_id) || 0));
     const recientes = data.slice(0, 5);
     const estadoColor = { pendiente:'#FFF3CD',en_preparacion:'#CCE5FF',en_camino:'#D4EDDA',entregado:'#D4EDDA',cancelado:'#F8D7DA' };
     const estadoTxt   = { pendiente:'#856404',en_preparacion:'#004085',en_camino:'#155724',entregado:'#155724',cancelado:'#721c24' };
@@ -337,6 +353,8 @@ async function loadPedidosAdmin() {
     if (params.length) url += '?' + params.join('&');
 
     const data = await apiGet(url);
+    // Ordenar explícitamente por ID descendente (el más reciente arriba, #1 al final abajo)
+    data.sort((a, b) => (parseInt(b.id || b.pedido_id) || 0) - (parseInt(a.id || a.pedido_id) || 0));
     const estadoColor = { pendiente:'#856404',en_preparacion:'#004085',en_camino:'#155724',entregado:'#155724',cancelado:'#721c24' };
     const estadoBg    = { pendiente:'#FFF3CD',en_preparacion:'#CCE5FF',en_camino:'#D4EDDA',entregado:'#D4EDDA',cancelado:'#F8D7DA' };
 
@@ -1305,8 +1323,29 @@ function escH(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+function parseUtcDate(str) {
+  if (!str) return null;
+  if (typeof str !== 'string') return new Date(str);
+  const s = str.trim();
+  const isoStr = s.includes('T') ? (s.endsWith('Z') || s.includes('+') ? s : s + 'Z') : s.replace(' ', 'T') + 'Z';
+  const d = new Date(isoStr);
+  return isNaN(d.getTime()) ? new Date(str) : d;
+}
+
 function formatFecha(str) {
   if (!str) return '—';
-  try { return new Date(str).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
-  catch(e) { return str; }
+  try {
+    const d = parseUtcDate(str);
+    return d.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  } catch(e) { return str; }
 }
+
+function toggleGuiaIngredientes() {
+  const el = document.getElementById('cuerpo-guia-ingredientes');
+  const btn = document.getElementById('btn-toggle-guia');
+  if (!el || !btn) return;
+  const isHidden = el.style.display === 'none';
+  el.style.display = isHidden ? 'grid' : 'none';
+  btn.textContent = isHidden ? '▼ Ocultar Guía' : '▶ Ver Guía';
+}
+window.toggleGuiaIngredientes = toggleGuiaIngredientes;

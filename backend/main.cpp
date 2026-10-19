@@ -851,7 +851,7 @@ int main() {
                 "SELECT pedido_id, fecha_pedido, estado, tipo_postre, base, cobertura, "
                 "licor, fruta, porciones, tipo_empaque, sin_alcohol, precio_total "
                 "FROM v_pedidos_resumen WHERE cliente_email = '" +
-                db_escape(conn, auth.email) + "' ORDER BY fecha_pedido DESC");
+                db_escape(conn, auth.email) + "' ORDER BY pedido_id DESC");
 
             send_ok(res, rows);
         } catch (std::exception& e) { send_error(res, 500, e.what()); }
@@ -1411,7 +1411,7 @@ int main() {
                 "LEFT JOIN coberturas   c  ON c.id=p.cobertura_id "
                 "LEFT JOIN licores      l  ON l.id=p.licor_id "
                 "LEFT JOIN frutas       f  ON f.id=p.fruta_id"
-                + where + " ORDER BY p.fecha_pedido DESC LIMIT 200");
+                + where + " ORDER BY p.id DESC LIMIT 200");
             send_ok(res, rows);
         } catch (std::exception& e) { send_error(res, 500, e.what()); }
         mysql_close(conn);
