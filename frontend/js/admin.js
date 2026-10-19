@@ -402,7 +402,7 @@ async function loadPedidosAdmin() {
           <div style="display:flex;gap:4px;justify-content:center;align-items:center">
             <button class="btn btn-sm btn-ghost" title="Ver detalle completo" style="padding:4px 7px;font-size:11px" onclick="verDetallePedido(${p.id})">👁 Ver</button>
             <button class="btn btn-sm btn-outline" title="Cambiar estado" style="padding:4px 7px;font-size:11px;border-color:var(--color-gray-300)" onclick="openEstadoPedido(${p.id},'${p.estado}')">✏️</button>
-            <button class="btn btn-sm btn-gold" title="Generar orden producción taller" style="padding:4px 7px;font-size:11px" onclick="generarOrdenProd(${p.id})">🏭</button>
+            ${p.estado !== 'cancelado' && p.estado !== 'entregado' ? `<button class="btn btn-sm btn-gold" title="Generar orden producción taller" style="padding:4px 7px;font-size:11px" onclick="generarOrdenProd(${p.id})">🏭</button>` : ''}
           </div>
         </td>
       </tr>`;
@@ -437,8 +437,10 @@ async function verDetallePedido(id) {
           <strong style="font-size:15px">#${p.pedido_id}</strong>
           <span style="background:${estadoBg[p.estado]||'#eee'};color:${estadoColor[p.estado]||'#333'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:8px">${p.estado}</span><br>
           <span style="font-size:var(--font-size-sm);color:var(--color-gray-600)">📅 ${formatFecha(p.fecha_pedido)}</span><br>
-          <span style="font-size:11px;color:${p.stock_reservado ? '#2E7D32' : 'var(--color-gray-500)'}">
-            ${p.stock_reservado ? '✓ Insumos descontados de inventario' : '⏳ Insumos pendientes de descuento (al cambiar a En Preparación)'}
+          <span style="font-size:11px;font-weight:600;color:${p.estado === 'cancelado' ? '#C62828' : (p.stock_reservado ? '#2E7D32' : 'var(--color-gray-500)')}">
+            ${p.estado === 'cancelado' 
+              ? '❌ Pedido cancelado (insumos devueltos al inventario)' 
+              : (p.stock_reservado ? '✓ Insumos descontados de inventario' : '⏳ Insumos pendientes de descuento')}
           </span>
         </div>
       </div>

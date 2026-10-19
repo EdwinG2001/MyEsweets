@@ -895,14 +895,126 @@ CREATE PROCEDURE `sp_cambiar_estado_pedido`(
     OUT p_resultado    VARCHAR(200)
 )
 BEGIN
-    DECLARE v_estado_actual VARCHAR(20);
-    SELECT estado INTO v_estado_actual FROM pedidos WHERE id = p_pedido_id;
+    DECLARE v_estado_actual   VARCHAR(20);
+    DECLARE v_stock_reservado TINYINT(1);
+    DECLARE v_base_id         INT UNSIGNED;
+    DECLARE v_cob_id          INT UNSIGNED;
+    DECLARE v_licor_id        INT UNSIGNED;
+    DECLARE v_fruta_id        INT UNSIGNED;
+    DECLARE v_porciones       INT UNSIGNED;
+    DECLARE v_sin_alcohol     TINYINT(1);
+
+    DECLARE v_gxp             DECIMAL(8,2)  DEFAULT 0;
+    DECLARE v_g_nec           DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_stock_cob       DECIMAL(10,2) DEFAULT 0;
+
+    DECLARE v_stock_base      INT           DEFAULT 0;
+
+    DECLARE v_mlxp            DECIMAL(6,2)  DEFAULT 0;
+    DECLARE v_ml_nec          DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_stock_licor     DECIMAL(10,2) DEFAULT 0;
+
+    DECLARE v_gxp_fruta       DECIMAL(8,2)  DEFAULT 0;
+    DECLARE v_g_nec_fruta     DECIMAL(10,2) DEFAULT 0;
+    DECLARE v_stock_fruta     DECIMAL(10,2) DEFAULT 0;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET p_resultado = 'ERROR: Fallo en la transaccion al cambiar estado';
+    END;
+
+    SET p_resultado = 'ERROR: Proceso no iniciado';
+
+    SELECT estado, stock_reservado, base_id, cobertura_id, licor_id, fruta_id, porciones, sin_alcohol
+    INTO v_estado_actual, v_stock_reservado, v_base_id, v_cob_id, v_licor_id, v_fruta_id, v_porciones, v_sin_alcohol
+    FROM pedidos WHERE id = p_pedido_id;
+
     IF v_estado_actual IS NULL THEN
         SET p_resultado = 'ERROR: Pedido no encontrado';
-    ELSEIF v_estado_actual IN ('entregado','cancelado') THEN
-        SET p_resultado = CONCAT('ERROR: No se puede cambiar desde estado: ', v_estado_actual);
+    ELSEIF v_estado_actual = 'entregado' THEN
+        SET p_resultado = 'ERROR: No se puede cambiar el estado de un pedido ya entregado';
+    ELSEIF v_estado_actual = 'cancelado' AND p_nuevo_estado = 'cancelado' THEN
+        SET p_resultado = 'OK: El pedido ya se encuentra cancelado';
+    ELSEIF v_estado_actual = 'cancelado' AND p_nuevo_estado != 'cancelado' THEN
+        SET p_resultado = 'ERROR: No se puede reactivar un pedido cancelado';
     ELSE
-        UPDATE pedidos SET estado = p_nuevo_estado, notas_admin = COALESCE(p_notas, notas_admin) WHERE id = p_pedido_id;
+        START TRANSACTION;
+
+        IF p_nuevo_estado = 'cancelado' THEN
+            -- Si los insumos fueron descontados/reservados, devolverlos al stock
+            IF v_stock_reservado = 1 THEN
+                -- 1. Devolver cobertura
+                IF v_cob_id IS NOT NULL THEN
+                    SELECT gramos_por_porcion INTO v_gxp FROM coberturas WHERE id = v_cob_id;
+                    SET v_g_nec = COALESCE(v_gxp, 0) * v_porciones;
+                    IF v_g_nec > 0 THEN
+                        SELECT stock_gramos INTO v_stock_cob FROM coberturas WHERE id = v_cob_id FOR UPDATE;
+                        UPDATE coberturas SET stock_gramos = stock_gramos + v_g_nec WHERE id = v_cob_id;
+                        INSERT INTO movimientos_inventario (tipo_recurso, recurso_id, usuario_id, pedido_id, tipo_movimiento, cantidad, cantidad_antes, cantidad_despues, motivo)
+                        VALUES ('cobertura', v_cob_id, p_admin_id, p_pedido_id, 'entrada', v_g_nec, v_stock_cob, v_stock_cob + v_g_nec, CONCAT('Devolución por cancelación Pedido #', p_pedido_id));
+                    END IF;
+                END IF;
+
+                -- 2. Devolver base
+                IF v_base_id IS NOT NULL THEN
+                    SELECT stock_porciones INTO v_stock_base FROM bases_postre WHERE id = v_base_id FOR UPDATE;
+                    UPDATE bases_postre SET stock_porciones = stock_porciones + v_porciones WHERE id = v_base_id;
+                    INSERT INTO movimientos_inventario (tipo_recurso, recurso_id, usuario_id, pedido_id, tipo_movimiento, cantidad, cantidad_antes, cantidad_despues, motivo)
+                    VALUES ('base_postre', v_base_id, p_admin_id, p_pedido_id, 'entrada', v_porciones, v_stock_base, v_stock_base + v_porciones, CONCAT('Devolución por cancelación Pedido #', p_pedido_id));
+                END IF;
+
+                -- 3. Devolver licor
+                IF v_licor_id IS NOT NULL AND v_sin_alcohol = 0 THEN
+                    SELECT ml_por_porcion INTO v_mlxp FROM licores WHERE id = v_licor_id;
+                    SET v_ml_nec = COALESCE(v_mlxp, 0) * v_porciones;
+                    IF v_ml_nec > 0 THEN
+                        SELECT stock_ml INTO v_stock_licor FROM licores WHERE id = v_licor_id FOR UPDATE;
+                        UPDATE licores SET stock_ml = stock_ml + v_ml_nec WHERE id = v_licor_id;
+                        INSERT INTO movimientos_inventario (tipo_recurso, recurso_id, usuario_id, pedido_id, tipo_movimiento, cantidad, cantidad_antes, cantidad_despues, motivo)
+                        VALUES ('licor', v_licor_id, p_admin_id, p_pedido_id, 'entrada', v_ml_nec, v_stock_licor, v_stock_licor + v_ml_nec, CONCAT('Devolución por cancelación Pedido #', p_pedido_id));
+                    END IF;
+                END IF;
+
+                -- 4. Devolver fruta
+                IF v_fruta_id IS NOT NULL AND v_fruta_id != 4 THEN
+                    SELECT gramos_por_porcion INTO v_gxp_fruta FROM frutas WHERE id = v_fruta_id;
+                    SET v_g_nec_fruta = COALESCE(v_gxp_fruta, 0) * v_porciones;
+                    IF v_g_nec_fruta > 0 THEN
+                        SELECT stock_gramos INTO v_stock_fruta FROM frutas WHERE id = v_fruta_id FOR UPDATE;
+                        UPDATE frutas SET stock_gramos = stock_gramos + v_g_nec_fruta WHERE id = v_fruta_id;
+                        INSERT INTO movimientos_inventario (tipo_recurso, recurso_id, usuario_id, pedido_id, tipo_movimiento, cantidad, cantidad_antes, cantidad_despues, motivo)
+                        VALUES ('fruta', v_fruta_id, p_admin_id, p_pedido_id, 'entrada', v_g_nec_fruta, v_stock_fruta, v_stock_fruta + v_g_nec_fruta, CONCAT('Devolución por cancelación Pedido #', p_pedido_id));
+                    END IF;
+                END IF;
+
+                -- Liberar reserva de stock y marcar cancelado
+                UPDATE pedidos 
+                SET estado = 'cancelado', 
+                    stock_reservado = 0, 
+                    notas_admin = IF(p_notas IS NOT NULL AND p_notas != '', p_notas, notas_admin) 
+                WHERE id = p_pedido_id;
+            ELSE
+                UPDATE pedidos 
+                SET estado = 'cancelado', 
+                    notas_admin = IF(p_notas IS NOT NULL AND p_notas != '', p_notas, notas_admin) 
+                WHERE id = p_pedido_id;
+            END IF;
+
+            -- Cancelar ordenes de producción activas
+            UPDATE ordenes_produccion 
+            SET estado = 'cancelada' 
+            WHERE pedido_id = p_pedido_id AND estado NOT IN ('completada', 'cancelada');
+
+        ELSE
+            -- Otros cambios de estado ('en_preparacion', 'en_camino', 'entregado')
+            UPDATE pedidos 
+            SET estado = p_nuevo_estado, 
+                notas_admin = IF(p_notas IS NOT NULL AND p_notas != '', p_notas, notas_admin) 
+            WHERE id = p_pedido_id;
+        END IF;
+
+        COMMIT;
         SET p_resultado = 'OK';
     END IF;
 END$$
@@ -915,15 +1027,16 @@ CREATE PROCEDURE `sp_generar_orden_produccion`(
     OUT p_mensaje    VARCHAR(200)
 )
 BEGIN
-    DECLARE v_existe    INT DEFAULT 0;
-    DECLARE v_base      VARCHAR(150) DEFAULT '—';
-    DECLARE v_cob       VARCHAR(150) DEFAULT '—';
-    DECLARE v_licor     VARCHAR(150) DEFAULT 'Sin alcohol';
-    DECLARE v_ml_licor  DECIMAL(6,2) DEFAULT 0;
-    DECLARE v_porciones INT          DEFAULT 1;
-    DECLARE v_tipo      VARCHAR(100) DEFAULT '—';
-    DECLARE v_detalles  JSON;
-    DECLARE v_tecnica   VARCHAR(200) DEFAULT 'Pincelado con brocha de silicona';
+    DECLARE v_existe     INT DEFAULT 0;
+    DECLARE v_base       VARCHAR(150) DEFAULT '—';
+    DECLARE v_cob        VARCHAR(150) DEFAULT '—';
+    DECLARE v_licor      VARCHAR(150) DEFAULT 'Sin alcohol';
+    DECLARE v_ml_licor   DECIMAL(6,2) DEFAULT 0;
+    DECLARE v_porciones  INT          DEFAULT 1;
+    DECLARE v_tipo       VARCHAR(100) DEFAULT '—';
+    DECLARE v_estado_ped VARCHAR(20)  DEFAULT '';
+    DECLARE v_detalles   JSON;
+    DECLARE v_tecnica    VARCHAR(200) DEFAULT 'Pincelado con brocha de silicona';
 
     SET p_op_id   = 0;
     SET p_mensaje = 'ERROR: Proceso no iniciado';
@@ -935,8 +1048,8 @@ BEGIN
     ELSE
         SELECT COALESCE(bp.nombre,'—'), COALESCE(c.nombre,'—'),
                COALESCE(l.nombre,'Sin alcohol'), COALESCE(l.ml_por_porcion,0),
-               p.porciones, COALESCE(tp.nombre,'—')
-        INTO v_base, v_cob, v_licor, v_ml_licor, v_porciones, v_tipo
+               p.porciones, COALESCE(tp.nombre,'—'), p.estado
+        INTO v_base, v_cob, v_licor, v_ml_licor, v_porciones, v_tipo, v_estado_ped
         FROM pedidos p
         LEFT JOIN bases_postre bp ON bp.id = p.base_id
         LEFT JOIN coberturas   c  ON c.id  = p.cobertura_id
@@ -944,23 +1057,31 @@ BEGIN
         LEFT JOIN tipos_postre tp ON tp.id = p.tipo_postre_id
         WHERE p.id = p_pedido_id;
 
-        IF v_ml_licor > 0 THEN
-            SET v_tecnica = 'Impregnacion: pincelado capas con licor, 5 min reposo entre capas';
+        IF v_estado_ped = '' OR v_estado_ped IS NULL THEN
+            SET p_mensaje = 'ERROR: Pedido no encontrado';
+            SET p_op_id = 0;
+        ELSEIF v_estado_ped IN ('cancelado', 'entregado') THEN
+            SET p_mensaje = CONCAT('ERROR: No se puede generar orden para un pedido ', v_estado_ped);
+            SET p_op_id = 0;
+        ELSE
+            IF v_ml_licor > 0 THEN
+                SET v_tecnica = 'Impregnacion: pincelado capas con licor, 5 min reposo entre capas';
+            END IF;
+
+            SET v_detalles = JSON_OBJECT(
+                'tipo_postre', v_tipo, 'base', v_base, 'cobertura', v_cob,
+                'licor', v_licor, 'porciones', v_porciones,
+                'ml_licor_total', v_ml_licor * v_porciones,
+                'ml_licor_porcion', v_ml_licor, 'tecnica', v_tecnica
+            );
+
+            INSERT INTO ordenes_produccion (pedido_id, generado_por, porciones, detalles_json, tecnica_impreg, estado)
+            VALUES (p_pedido_id, p_admin_id, v_porciones, v_detalles, v_tecnica, 'pendiente');
+
+            SET p_op_id = LAST_INSERT_ID();
+            SET p_mensaje = 'OK';
+            UPDATE pedidos SET estado = 'en_preparacion' WHERE id = p_pedido_id;
         END IF;
-
-        SET v_detalles = JSON_OBJECT(
-            'tipo_postre', v_tipo, 'base', v_base, 'cobertura', v_cob,
-            'licor', v_licor, 'porciones', v_porciones,
-            'ml_licor_total', v_ml_licor * v_porciones,
-            'ml_licor_porcion', v_ml_licor, 'tecnica', v_tecnica
-        );
-
-        INSERT INTO ordenes_produccion (pedido_id, generado_por, porciones, detalles_json, tecnica_impreg, estado)
-        VALUES (p_pedido_id, p_admin_id, v_porciones, v_detalles, v_tecnica, 'pendiente');
-
-        SET p_op_id = LAST_INSERT_ID();
-        SET p_mensaje = 'OK';
-        UPDATE pedidos SET estado = 'en_preparacion' WHERE id = p_pedido_id;
     END IF;
 END$$
 
